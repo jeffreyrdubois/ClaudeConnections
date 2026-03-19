@@ -1,30 +1,37 @@
 services:
+
+  # ── Cloudflare Tunnel ────────────────────────────────────────────────────────
+  # Creates an outbound-only tunnel to Cloudflare. No open ports needed.
+  # Get your tunnel token from: Cloudflare Zero Trust → Networks → Tunnels
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - tunnel
+
+  # ── YNAB MCP Server ──────────────────────────────────────────────────────────
   ynab-mcp:
     build: .
     container_name: ynab-mcp
-    # Port mapping only needed for local testing. When SWAG proxies via
-    # the shared Docker network you can remove the ports section entirely.
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
     environment:
       - YNAB_API_TOKEN=${YNAB_API_TOKEN}
       - YNAB_BUDGET_ID=${YNAB_BUDGET_ID:-last-used}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - PORT=3000
-    restart: unless-stopped
+    networks:
+      - tunnel
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-    networks:
-      - swag
 
-# Connect to SWAG's existing network so it can proxy to this container.
-# Replace "swag_default" with whatever your SWAG network is actually named.
-# Find yours with: docker network ls | grep swag
 networks:
-  swag:
-    external: true
-    name: swag_default
+  tunnel:
+    driver: bridge
