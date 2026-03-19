@@ -2,6 +2,8 @@ services:
   ynab-mcp:
     build: .
     container_name: ynab-mcp
+    # Port mapping only needed for local testing. When SWAG proxies via
+    # the shared Docker network you can remove the ports section entirely.
     ports:
       - "3000:3000"
     environment:
@@ -16,3 +18,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - swag
+
+# Connect to SWAG's existing network so it can proxy to this container.
+# Replace "swag_default" with whatever your SWAG network is actually named.
+# Find yours with: docker network ls | grep swag
+networks:
+  swag:
+    external: true
+    name: swag_default
