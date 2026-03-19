@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>ynab-mcp</Name>
+  <Repository>ghcr.io/jeffreyrdubois/ynab-mcp:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/jeffreyrdubois/ClaudeConnections</Project>
+  <Overview>MCP (Model Context Protocol) server that connects Claude.ai to your YNAB budget. Allows Claude to read account balances, transactions, and category budgets in real time.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/ynab-mcp/assets/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="MCP Port" Target="3000" Default="3000" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+
+  <Config Name="YNAB API Token" Target="YNAB_API_TOKEN" Default="" Mode="" Description="Your YNAB Personal Access Token. Generate one at https://app.ynab.com/settings/developer" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="YNAB Budget ID" Target="YNAB_BUDGET_ID" Default="last-used" Mode="" Description="Your YNAB budget ID (found in the URL when viewing your budget: app.ynab.com/budgets/YOUR-BUDGET-ID/). Leave as 'last-used' to auto-select your most recent budget." Type="Variable" Display="always" Required="false" Mask="false">last-used</Config>
+
+  <Config Name="MCP Auth Token" Target="MCP_AUTH_TOKEN" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+</Container>
