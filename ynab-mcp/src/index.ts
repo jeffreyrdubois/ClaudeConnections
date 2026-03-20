@@ -8,7 +8,6 @@ import { z } from "zod";
 
 const YNAB_API_TOKEN = process.env.YNAB_API_TOKEN;
 const YNAB_BUDGET_ID = process.env.YNAB_BUDGET_ID || "last-used";
-const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 const PORT = parseInt(process.env.PORT || "3000");
@@ -304,9 +303,9 @@ app.use(express.json());
 
 // Auth middleware
 function requireAuth(req: Request, res: Response, next: () => void) {
-  if (!MCP_AUTH_TOKEN) return next();
+  if (!OAUTH_CLIENT_SECRET) return next();
   const auth = req.headers.authorization;
-  if (!auth || auth !== `Bearer ${MCP_AUTH_TOKEN}`) {
+  if (!auth || auth !== `Bearer ${OAUTH_CLIENT_SECRET}`) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -333,7 +332,7 @@ app.get("/.well-known/oauth-authorization-server", (_req, res) => {
 
 // Token endpoint — client credentials grant
 app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request, res: Response) => {
-  if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET || !MCP_AUTH_TOKEN) {
+  if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
     res.status(501).json({ error: "OAuth not configured on this server" });
     return;
   }
@@ -351,7 +350,7 @@ app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request,
   }
 
   res.json({
-    access_token: MCP_AUTH_TOKEN,
+    access_token: OAUTH_CLIENT_SECRET,
     token_type: "Bearer",
     expires_in: 86400,
   });
@@ -382,7 +381,6 @@ app.delete("/mcp", (_req, res) => res.status(405).json({ error: "Method not allo
 app.listen(PORT, () => {
   console.log(`YNAB MCP Server running on port ${PORT}`);
   console.log(`Budget ID: ${YNAB_BUDGET_ID}`);
-  console.log(`Auth enabled: ${!!MCP_AUTH_TOKEN}`);
-  console.log(`OAuth enabled: ${!!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET && MCP_AUTH_TOKEN)}`);
+  console.log(`OAuth enabled: ${!!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET)}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });
