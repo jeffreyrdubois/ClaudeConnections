@@ -1,23 +1,13 @@
 services:
 
-  # ── Cloudflare Tunnel ────────────────────────────────────────────────────────
-  # Creates an outbound-only tunnel to Cloudflare. No open ports needed.
-  # Get your tunnel token from: Cloudflare Zero Trust → Networks → Tunnels
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared-media-mcp
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    networks:
-      - tunnel
-
   # ── Media MCP Server ─────────────────────────────────────────────────────────
+  # Tunnel is handled by the shared cloudflared container (see cloudflared/).
   media-mcp:
     build: .
     container_name: media-mcp
     restart: unless-stopped
+    ports:
+      - "3001:3000"
     environment:
       # Sonarr
       - SONARR_URL=${SONARR_URL}
@@ -35,15 +25,9 @@ services:
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - PORT=3000
-    networks:
-      - tunnel
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-networks:
-  tunnel:
-    driver: bridge

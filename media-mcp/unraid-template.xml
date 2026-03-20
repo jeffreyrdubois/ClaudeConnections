@@ -22,7 +22,7 @@
   <DonateLink/>
   <Requires/>
 
-  <Config Name="MCP Port" Target="3000" Default="3000" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="MCP Port" Target="3000" Default="3001" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3001 to avoid conflict with ynab-mcp on 3000." Type="Port" Display="always" Required="true" Mask="false">3001</Config>
 
   <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
