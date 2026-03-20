@@ -321,7 +321,12 @@ app.get("/health", (_req, res) => {
 // ── OAuth 2.0 ─────────────────────────────────────────────────────────────────
 
 // In-memory store for authorization codes (expire after 60 seconds)
-const authCodes = new Map<string, { redirectUri: string; expiresAt: number }>();
+const authCodes = new Map<string, {
+  redirectUri: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+  expiresAt: number;
+}>();
 
 // OAuth Authorization Server Metadata (RFC 8414)
 app.get("/.well-known/oauth-authorization-server", (_req, res) => {
@@ -332,13 +337,15 @@ app.get("/.well-known/oauth-authorization-server", (_req, res) => {
     token_endpoint: `${base}/oauth/token`,
     grant_types_supported: ["authorization_code", "client_credentials"],
     response_types_supported: ["code"],
-    token_endpoint_auth_methods_supported: ["client_secret_post"],
+    code_challenge_methods_supported: ["S256", "plain"],
+    token_endpoint_auth_methods_supported: ["client_secret_post", "none"],
   });
 });
 
 // Authorization endpoint — auto-approves and redirects back with a code
 app.get("/authorize", (req: Request, res: Response) => {
-  const { response_type, client_id, redirect_uri, state } = req.query as Record<string, string>;
+  const { response_type, client_id, redirect_uri, state, code_challenge, code_challenge_method } =
+    req.query as Record<string, string>;
 
   if (response_type !== "code") {
     res.status(400).send("unsupported_response_type");
@@ -350,7 +357,12 @@ app.get("/authorize", (req: Request, res: Response) => {
   }
 
   const code = crypto.randomBytes(16).toString("hex");
-  authCodes.set(code, { redirectUri: redirect_uri, expiresAt: Date.now() + 60_000 });
+  authCodes.set(code, {
+    redirectUri: redirect_uri,
+    codeChallenge: code_challenge,
+    codeChallengeMethod: code_challenge_method,
+    expiresAt: Date.now() + 60_000,
+  });
 
   const url = new URL(redirect_uri);
   url.searchParams.set("code", code);
@@ -365,7 +377,7 @@ app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request,
     return;
   }
 
-  const { grant_type, client_id, client_secret, code } = req.body;
+  const { grant_type, client_id, client_secret, code, code_verifier } = req.body;
 
   if (grant_type === "authorization_code") {
     const stored = authCodes.get(code);
@@ -373,6 +385,23 @@ app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request,
       res.status(401).json({ error: "invalid_grant" });
       return;
     }
+
+    // Verify PKCE if the authorization request included a code_challenge
+    if (stored.codeChallenge) {
+      if (!code_verifier) {
+        res.status(401).json({ error: "invalid_grant", error_description: "code_verifier required" });
+        return;
+      }
+      const method = stored.codeChallengeMethod ?? "plain";
+      const derived = method === "S256"
+        ? crypto.createHash("sha256").update(code_verifier).digest("base64url")
+        : code_verifier;
+      if (derived !== stored.codeChallenge) {
+        res.status(401).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
+        return;
+      }
+    }
+
     authCodes.delete(code);
     res.json({ access_token: OAUTH_CLIENT_SECRET, token_type: "Bearer", expires_in: 86400 });
     return;
