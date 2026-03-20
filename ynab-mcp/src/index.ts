@@ -9,6 +9,8 @@ import { z } from "zod";
 const YNAB_API_TOKEN = process.env.YNAB_API_TOKEN;
 const YNAB_BUDGET_ID = process.env.YNAB_BUDGET_ID || "last-used";
 const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
+const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
+const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 const PORT = parseInt(process.env.PORT || "3000");
 
 if (!YNAB_API_TOKEN) {
@@ -316,6 +318,45 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "ynab-mcp-server" });
 });
 
+// ── OAuth 2.0 ─────────────────────────────────────────────────────────────────
+
+// OAuth Authorization Server Metadata (RFC 8414)
+app.get("/.well-known/oauth-authorization-server", (_req, res) => {
+  const base = `https://${_req.headers.host}`;
+  res.json({
+    issuer: base,
+    token_endpoint: `${base}/oauth/token`,
+    grant_types_supported: ["client_credentials"],
+    token_endpoint_auth_methods_supported: ["client_secret_post"],
+  });
+});
+
+// Token endpoint — client credentials grant
+app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request, res: Response) => {
+  if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET || !MCP_AUTH_TOKEN) {
+    res.status(501).json({ error: "OAuth not configured on this server" });
+    return;
+  }
+
+  const { grant_type, client_id, client_secret } = req.body;
+
+  if (grant_type !== "client_credentials") {
+    res.status(400).json({ error: "unsupported_grant_type" });
+    return;
+  }
+
+  if (client_id !== OAUTH_CLIENT_ID || client_secret !== OAUTH_CLIENT_SECRET) {
+    res.status(401).json({ error: "invalid_client" });
+    return;
+  }
+
+  res.json({
+    access_token: MCP_AUTH_TOKEN,
+    token_type: "Bearer",
+    expires_in: 86400,
+  });
+});
+
 // MCP endpoint — stateless Streamable HTTP transport
 async function handleMcp(req: Request, res: Response) {
   const server = createMcpServer();
@@ -342,5 +383,6 @@ app.listen(PORT, () => {
   console.log(`YNAB MCP Server running on port ${PORT}`);
   console.log(`Budget ID: ${YNAB_BUDGET_ID}`);
   console.log(`Auth enabled: ${!!MCP_AUTH_TOKEN}`);
+  console.log(`OAuth enabled: ${!!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET && MCP_AUTH_TOKEN)}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });
