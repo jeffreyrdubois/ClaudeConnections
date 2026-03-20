@@ -5,8 +5,8 @@ services:
   # Configure ingress rules in Cloudflare Zero Trust → Networks → Tunnels.
   #
   # Example ingress rules (set in the Cloudflare dashboard):
-  #   ynabmcp.yourdomain.com   → http://localhost:3000
-  #   mediamcp.yourdomain.com  → http://localhost:3001
+  #   ynabmcp.yourdomain.com   → http://YOUR_SERVER_IP:3000
+  #   mediamcp.yourdomain.com  → http://YOUR_SERVER_IP:3001
   #
   # Get your tunnel token from:
   #   Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Configure → Docker
@@ -14,7 +14,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     restart: unless-stopped
-    network_mode: host
+    network_mode: bridge
     command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}

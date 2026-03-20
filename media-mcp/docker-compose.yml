@@ -5,6 +5,7 @@ services:
   media-mcp:
     build: .
     container_name: media-mcp
+    network_mode: bridge
     restart: unless-stopped
     ports:
       - "3001:3000"

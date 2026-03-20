@@ -5,6 +5,7 @@ services:
   ynab-mcp:
     build: .
     container_name: ynab-mcp
+    network_mode: bridge
     restart: unless-stopped
     ports:
       - "3000:3000"
