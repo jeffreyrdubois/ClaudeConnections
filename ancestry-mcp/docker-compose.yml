@@ -1,0 +1,34 @@
+services:
+
+  # ── Ancestry MCP Server ───────────────────────────────────────────────────────
+  # Tunnel is handled by the shared cloudflared container (see cloudflared/).
+  #
+  # To update family tree data:
+  #   1. Export a GEDCOM from Ancestry.com (Ancestry > tree > ... > Export Tree)
+  #   2. Copy the .ged file into the ancestry-data volume as "ancestry.ged"
+  #   3. Restart this container — the entrypoint will auto-process the GEDCOM
+  #      into ancestry.json (filtered to individuals born 1900 or later)
+  ancestry-mcp:
+    build: .
+    container_name: ancestry-mcp
+    network_mode: bridge
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - ancestry-data:/data
+    environment:
+      - GEDCOM_PATH=/data/ancestry.ged
+      - DATA_PATH=/data/ancestry.json
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  ancestry-data:
