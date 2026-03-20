@@ -28,6 +28,4 @@
 
   <Config Name="YNAB Budget ID" Target="YNAB_BUDGET_ID" Default="last-used" Mode="" Description="Your YNAB budget ID (found in the URL when viewing your budget: app.ynab.com/budgets/YOUR-BUDGET-ID/). Leave as 'last-used' to auto-select your most recent budget." Type="Variable" Display="always" Required="false" Mask="false">last-used</Config>
 
-  <Config Name="MCP Auth Token" Target="MCP_AUTH_TOKEN" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-
 </Container>
