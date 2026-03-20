@@ -11,7 +11,6 @@ services:
     environment:
       - YNAB_API_TOKEN=${YNAB_API_TOKEN}
       - YNAB_BUDGET_ID=${YNAB_BUDGET_ID:-last-used}
-      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - PORT=3000
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
