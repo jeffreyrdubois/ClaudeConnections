@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import crypto from "crypto";
 import express, { Request, Response } from "express";
 import { z } from "zod";
 
@@ -645,33 +646,73 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// In-memory store for authorization codes (expire after 60 seconds)
+const authCodes = new Map<string, { redirectUri: string; expiresAt: number }>();
+
 // OAuth Authorization Server Metadata (RFC 8414)
 app.get("/.well-known/oauth-authorization-server", (_req, res) => {
   const base = `https://${_req.headers.host}`;
   res.json({
     issuer: base,
+    authorization_endpoint: `${base}/authorize`,
     token_endpoint: `${base}/oauth/token`,
-    grant_types_supported: ["client_credentials"],
+    grant_types_supported: ["authorization_code", "client_credentials"],
+    response_types_supported: ["code"],
     token_endpoint_auth_methods_supported: ["client_secret_post"],
   });
 });
 
-// Token endpoint — client credentials grant
+// Authorization endpoint — auto-approves and redirects back with a code
+app.get("/authorize", (req: Request, res: Response) => {
+  const { response_type, client_id, redirect_uri, state } = req.query as Record<string, string>;
+
+  if (response_type !== "code") {
+    res.status(400).send("unsupported_response_type");
+    return;
+  }
+  if (client_id !== OAUTH_CLIENT_ID) {
+    res.status(401).send("Unknown client_id");
+    return;
+  }
+
+  const code = crypto.randomBytes(16).toString("hex");
+  authCodes.set(code, { redirectUri: redirect_uri, expiresAt: Date.now() + 60_000 });
+
+  const url = new URL(redirect_uri);
+  url.searchParams.set("code", code);
+  if (state) url.searchParams.set("state", state);
+  res.redirect(url.toString());
+});
+
+// Token endpoint — authorization_code and client_credentials grants
 app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request, res: Response) => {
   if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
     res.status(501).json({ error: "OAuth not configured on this server" });
     return;
   }
-  const { grant_type, client_id, client_secret } = req.body;
-  if (grant_type !== "client_credentials") {
-    res.status(400).json({ error: "unsupported_grant_type" });
+  const { grant_type, client_id, client_secret, code } = req.body;
+
+  if (grant_type === "authorization_code") {
+    const stored = authCodes.get(code);
+    if (!stored || stored.expiresAt < Date.now()) {
+      res.status(401).json({ error: "invalid_grant" });
+      return;
+    }
+    authCodes.delete(code);
+    res.json({ access_token: OAUTH_CLIENT_SECRET, token_type: "Bearer", expires_in: 86400 });
     return;
   }
-  if (client_id !== OAUTH_CLIENT_ID || client_secret !== OAUTH_CLIENT_SECRET) {
-    res.status(401).json({ error: "invalid_client" });
+
+  if (grant_type === "client_credentials") {
+    if (client_id !== OAUTH_CLIENT_ID || client_secret !== OAUTH_CLIENT_SECRET) {
+      res.status(401).json({ error: "invalid_client" });
+      return;
+    }
+    res.json({ access_token: OAUTH_CLIENT_SECRET, token_type: "Bearer", expires_in: 86400 });
     return;
   }
-  res.json({ access_token: OAUTH_CLIENT_SECRET, token_type: "Bearer", expires_in: 86400 });
+
+  res.status(400).json({ error: "unsupported_grant_type" });
 });
 
 // MCP endpoint — stateless Streamable HTTP transport
