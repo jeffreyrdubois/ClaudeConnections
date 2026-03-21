@@ -41,10 +41,9 @@ interface AncestryData {
   individuals: Record<string, Individual>;
   families:    Record<string, Family>;
   metadata: {
-    source_file:         string;
-    total_before_filter: number;
-    total_after_filter:  number;
-    filter:              string;
+    source_file:       string;
+    total_individuals: number;
+    total_families:    number;
   };
 }
 
@@ -53,7 +52,7 @@ interface AncestryData {
 let data: AncestryData = {
   individuals: {},
   families:    {},
-  metadata: { source_file: "", total_before_filter: 0, total_after_filter: 0, filter: "" },
+  metadata: { source_file: "", total_individuals: 0, total_families: 0 },
 };
 
 function loadData(): void {
@@ -165,7 +164,20 @@ function createMcpServer(): McpServer {
     async ({ id }) => {
       const person = data.individuals[id];
       if (!person) return errorResponse(`No individual found with ID: ${id}`);
-      return { content: [{ type: "text", text: JSON.stringify(formatPerson(person), null, 2) }] };
+
+      const marriages = person.fams.flatMap(famId => {
+        const fam = data.families[famId];
+        if (!fam) return [];
+        const spouseId = person.sex === "M" ? fam.wife : fam.husb;
+        return [{
+          spouse:         spouseId && data.individuals[spouseId] ? formatPerson(data.individuals[spouseId]) : null,
+          marriage_date:  fam.marr_date,
+          marriage_place: fam.marr_place,
+        }];
+      });
+
+      const result = { ...formatPerson(person), marriages };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -311,21 +323,23 @@ function createMcpServer(): McpServer {
     "Get a high-level summary of the loaded family tree: total people, date range, sex breakdown, and metadata.",
     {},
     async () => {
-      const inds   = Object.values(data.individuals);
-      const years  = inds.map(i => i.birth_year).filter((y): y is number => y != null);
-      const males  = inds.filter(i => i.sex === "M").length;
+      const inds    = Object.values(data.individuals);
+      const years   = inds.map(i => i.birth_year).filter((y): y is number => y != null);
+      const males   = inds.filter(i => i.sex === "M").length;
       const females = inds.filter(i => i.sex === "F").length;
+      const withMarriage = Object.values(data.families).filter(f => f.marr_date != null).length;
 
       return {
         content: [{
           type: "text",
           text: JSON.stringify({
-            total_individuals: inds.length,
-            total_families:    Object.keys(data.families).length,
+            total_individuals:       inds.length,
+            total_families:          Object.keys(data.families).length,
+            families_with_marriage:  withMarriage,
             males,
             females,
-            sex_unknown:       inds.length - males - females,
-            birth_year_range:  years.length > 0
+            sex_unknown:             inds.length - males - females,
+            birth_year_range:        years.length > 0
               ? { earliest: Math.min(...years), latest: Math.max(...years) }
               : null,
             metadata: data.metadata,
