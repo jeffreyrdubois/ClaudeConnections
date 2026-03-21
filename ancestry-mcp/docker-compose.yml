@@ -16,7 +16,7 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      - ancestry-data:/data
+      - /mnt/user/appdata/ancestry-mcp:/data
     environment:
       - GEDCOM_PATH=/data/ancestry.ged
       - DATA_PATH=/data/ancestry.json
@@ -29,6 +29,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-
-volumes:
-  ancestry-data:
