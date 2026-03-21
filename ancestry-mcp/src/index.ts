@@ -59,7 +59,7 @@ let data: AncestryData = {
 function loadData(): void {
   if (!existsSync(DATA_PATH)) {
     console.warn(`Data file not found: ${DATA_PATH}`);
-    console.warn("Place your Ancestry.com GEDCOM export at /data/ancestry.ged and restart the container.");
+    console.warn("Place your Ancestry.com GEDCOM export (.ged file) in the /data directory and restart the container.");
     return;
   }
   try {
