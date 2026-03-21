@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Parse a GEDCOM file exported from Ancestry.com, filter to individuals born
-since 1900, and write a compact JSON file for the ancestry MCP server.
+Parse a GEDCOM file exported from Ancestry.com and write a compact JSON file
+for the ancestry MCP server.
 
 Usage:
   python process_gedcom.py <input.ged> <output.json>
 
 The script handles GEDCOM 5.5 / 5.5.1 format as exported by Ancestry.com.
-Only individuals with a known birth year >= 1900 are kept.  Individuals with
-no recorded birth year are also kept (they may be living relatives).
-Family records are kept when at least one member passes the filter.
+All individuals and family records are included.
 """
 
 import json
@@ -194,19 +192,13 @@ def main() -> None:
     print(f"  Total individuals : {len(individuals)}")
     print(f"  Total families    : {len(families)}")
 
-    print("Filtering to individuals born 1900 or later (or unknown birth year) ...")
-    filtered_inds, filtered_fams = filter_since_1900(individuals, families)
-    print(f"  Kept individuals  : {len(filtered_inds)}")
-    print(f"  Kept families     : {len(filtered_fams)}")
-
     output = {
-        "individuals": filtered_inds,
-        "families":    filtered_fams,
+        "individuals": individuals,
+        "families":    families,
         "metadata": {
-            "source_file":         str(Path(input_path).name),
-            "total_before_filter": len(individuals),
-            "total_after_filter":  len(filtered_inds),
-            "filter":              "birth_year >= 1900 or unknown",
+            "source_file":      str(Path(input_path).name),
+            "total_individuals": len(individuals),
+            "total_families":    len(families),
         },
     }
 
