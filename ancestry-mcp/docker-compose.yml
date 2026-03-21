@@ -16,7 +16,7 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      - /mnt/user/appdata/ancestry-mcp:/data
+      - /mnt/user/appdata/ClaudeConnections/ancestry-mcp/data:/data
     environment:
       - GEDCOM_PATH=/data/ancestry.ged
       - DATA_PATH=/data/ancestry.json
