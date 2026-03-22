@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>media-mcp</Name>
-  <Repository>ghcr.io/jeffreyrdubois/media-mcp:latest</Repository>
+  <Name>mcp-mediamanager</Name>
+  <Repository>ghcr.io/jeffreyrdubois/mcp-mediamanager:latest</Repository>
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
@@ -12,8 +12,8 @@
   <Overview>MCP (Model Context Protocol) server that connects Claude.ai to your media stack: Sonarr, Radarr, Tautulli, and Overseerr. Ask Claude to add shows and movies, check what's airing, see who's streaming, manage requests, and more. Each service is optional — only configure the ones you use.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/media-mcp/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/media-mcp/assets/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-mediamanager/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-mediamanager/assets/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
@@ -22,11 +22,11 @@
   <DonateLink/>
   <Requires/>
 
-  <Config Name="MCP Port" Target="3000" Default="3001" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3001 to avoid conflict with ynab-mcp on 3000." Type="Port" Display="always" Required="true" Mask="false">3001</Config>
+  <Config Name="MCP Port" Target="3000" Default="3001" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3001 to avoid conflict with mcp-ynab on 3000." Type="Port" Display="always" Required="true" Mask="false">3001</Config>
 
   <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
-  <Config Name="MCP Client ID" Target="OAUTH_CLIENT_ID" Default="media-mcp" Mode="" Description="OAuth client ID used alongside the auth token. You can leave this as 'media-mcp'." Type="Variable" Display="always" Required="false" Mask="false">media-mcp</Config>
+  <Config Name="MCP Client ID" Target="OAUTH_CLIENT_ID" Default="mcp-mediamanager" Mode="" Description="OAuth client ID used alongside the auth token. You can leave this as 'mcp-mediamanager'." Type="Variable" Display="always" Required="false" Mask="false">mcp-mediamanager</Config>
 
   <!-- Sonarr -->
   <Config Name="Sonarr URL" Target="SONARR_URL" Default="" Mode="" Description="URL of your Sonarr instance, e.g. http://192.168.1.100:8989. Leave blank to disable Sonarr tools." Type="Variable" Display="always" Required="false" Mask="false"></Config>

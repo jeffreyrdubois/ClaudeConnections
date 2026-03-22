@@ -8,15 +8,15 @@ services:
   #   2. Copy the .ged file into the data directory (any filename works)
   #   3. Restart this container — the entrypoint will auto-process the GEDCOM
   #      into ancestry.json
-  ancestry-mcp:
+  mcp-ancestry:
     build: .
-    container_name: ancestry-mcp
+    container_name: mcp-ancestry
     network_mode: bridge
     restart: unless-stopped
     ports:
       - "3002:3000"
     volumes:
-      - /mnt/user/appdata/ClaudeConnections/ancestry-mcp/data:/data
+      - /mnt/user/appdata/ClaudeConnections/mcp-ancestry/data:/data
     environment:
       - DATA_PATH=/data/ancestry.json
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}

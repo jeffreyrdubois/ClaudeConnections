@@ -2,9 +2,9 @@ services:
 
   # ── YNAB MCP Server ──────────────────────────────────────────────────────────
   # Tunnel is handled by the shared cloudflared container (see cloudflared/).
-  ynab-mcp:
+  mcp-ynab:
     build: .
-    container_name: ynab-mcp
+    container_name: mcp-ynab
     network_mode: bridge
     restart: unless-stopped
     ports:

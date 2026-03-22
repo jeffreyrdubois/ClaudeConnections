@@ -181,7 +181,7 @@ function errorResponse(message: string) {
 // A new McpServer instance is created per HTTP request (stateless transport).
 
 function createMcpServer(): McpServer {
-  const server = new McpServer({ name: "ancestry-mcp-server", version: "1.0.0" });
+  const server = new McpServer({ name: "mcp-ancestry", version: "1.0.0" });
 
   // ── Tool: search_people ────────────────────────────────────────────────────
   server.tool(
@@ -730,7 +730,7 @@ function requireAuth(req: Request, res: Response, next: () => void) {
 app.get("/health", (_req, res) => {
   res.json({
     status:       "ok",
-    service:      "ancestry-mcp-server",
+    service:      "mcp-ancestry",
     individuals:  Object.keys(data.individuals).length,
     families:     Object.keys(data.families).length,
   });

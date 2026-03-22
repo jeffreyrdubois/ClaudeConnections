@@ -1,7 +1,7 @@
 {
-  "name": "ancestry-mcp-server",
+  "name": "mcp-mediamanager",
   "version": "1.0.0",
-  "description": "MCP server exposing Ancestry.com family tree data (via GEDCOM) to Claude.ai",
+  "description": "MCP server giving Claude access to Sonarr, Radarr, Tautulli, and Overseerr",
   "type": "module",
   "scripts": {
     "build": "tsc",
