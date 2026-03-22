@@ -277,28 +277,48 @@ function createMcpServer(): McpServer {
     },
     async ({ query, limit }) => {
       try {
-        await ensureCsrfToken();
-        const data = await tbGet("/store-finder/findStores", { q: query, maxResults: String(limit) });
+        // Geocode the text query to lat/long via OpenStreetMap Nominatim
+        const geoUrl = new URL("https://nominatim.openstreetmap.org/search");
+        geoUrl.searchParams.set("q", query);
+        geoUrl.searchParams.set("format", "json");
+        geoUrl.searchParams.set("limit", "1");
+        const geoRes = await fetch(geoUrl.toString(), {
+          headers: { "User-Agent": "mcp-tacobell/1.0" },
+        });
+        if (!geoRes.ok) throw new Error(`Geocoding failed: HTTP ${geoRes.status}`);
+        const geoData = await geoRes.json();
+        if (!geoData.length) return errorResponse(`Could not geocode "${query}" — try a zip code or "City, State".`);
+        const { lat, lon } = geoData[0];
 
-        if (!data || (!data.stores && !Array.isArray(data))) {
-          return ok({ message: "No stores found for that query.", query, raw: data });
-        }
+        // Fetch nearby Taco Bell stores
+        const storeUrl = new URL(`${TB_BASE}/tacobellwebservices/v4/tacobell/stores`);
+        storeUrl.searchParams.set("latitude", lat);
+        storeUrl.searchParams.set("longitude", lon);
+        const storeRes = await tbFetch(`/tacobellwebservices/v4/tacobell/stores`, {
+          method: "GET",
+          params: { latitude: lat, longitude: lon },
+        });
+        if (!storeRes.ok) throw new Error(`Store search failed: HTTP ${storeRes.status}`);
+        const data = await storeRes.json();
 
-        const stores = (data.stores ?? data).slice(0, limit).map((s: any) => ({
-          storeId: s.name ?? s.storeId ?? s.id,
-          displayName: s.displayName ?? s.storeName ?? "Taco Bell",
-          address: [s.address?.line1, s.address?.town, s.address?.region?.isocode]
+        const rawStores: any[] = data.nearByStores ?? data.stores ?? (Array.isArray(data) ? data : []);
+        if (!rawStores.length) return ok({ message: "No Taco Bell locations found near that location.", query });
+
+        const stores = rawStores.slice(0, limit).map((s: any) => ({
+          storeId: s.storeNumber ?? s.name ?? s.id,
+          displayName: s.name ?? "Taco Bell",
+          address: [s.address?.line1, s.address?.town ?? s.address?.city, s.address?.region?.isocode ?? s.address?.state]
             .filter(Boolean).join(", "),
           phone: s.address?.phone,
           distance: s.formattedDistance ?? s.distance,
-          isOpen: s.openingHours?.currentlyOpen,
+          isOpen: s.openingHours?.currentlyOpen ?? s.isOpen,
           hours: s.openingHours?.weekDayOpeningList?.reduce((acc: any, d: any) => {
             acc[d.weekDay] = d.closed ? "Closed" : `${d.openingTime?.formattedHour} – ${d.closingTime?.formattedHour}`;
             return acc;
           }, {}),
         }));
 
-        return ok({ count: stores.length, query, stores });
+        return ok({ count: stores.length, query, geocodedTo: { lat, lon }, stores });
       } catch (e: any) {
         return errorResponse(e.message);
       }
