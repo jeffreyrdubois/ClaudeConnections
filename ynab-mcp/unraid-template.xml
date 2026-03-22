@@ -12,7 +12,7 @@
   <Overview>MCP (Model Context Protocol) server that connects Claude.ai to your YNAB budget. Allows Claude to read account balances, transactions, and category budgets in real time.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
-  <TemplateURL/>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/ynab-mcp/unraid-template.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/ynab-mcp/assets/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
@@ -27,5 +27,9 @@
   <Config Name="YNAB API Token" Target="YNAB_API_TOKEN" Default="" Mode="" Description="Your YNAB Personal Access Token. Generate one at https://app.ynab.com/settings/developer" Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
   <Config Name="YNAB Budget ID" Target="YNAB_BUDGET_ID" Default="last-used" Mode="" Description="Your YNAB budget ID (found in the URL when viewing your budget: app.ynab.com/budgets/YOUR-BUDGET-ID/). Leave as 'last-used' to auto-select your most recent budget." Type="Variable" Display="always" Required="false" Mask="false">last-used</Config>
+
+  <Config Name="MCP Client ID" Target="OAUTH_CLIENT_ID" Default="ynab-mcp" Mode="" Description="OAuth client ID used when configuring Claude.ai remote MCP. You can leave this as 'ynab-mcp'." Type="Variable" Display="always" Required="false" Mask="false">ynab-mcp</Config>
+
+  <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
 </Container>
