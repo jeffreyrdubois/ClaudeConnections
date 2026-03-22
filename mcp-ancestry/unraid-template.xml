@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>ancestry-mcp</Name>
-  <Repository>ghcr.io/jeffreyrdubois/ancestry-mcp:latest</Repository>
+  <Name>mcp-ancestry</Name>
+  <Repository>ghcr.io/jeffreyrdubois/mcp-ancestry:latest</Repository>
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
@@ -12,8 +12,8 @@
   <Overview>MCP (Model Context Protocol) server that exposes your Ancestry.com family tree to Claude.ai. Export your tree as a GEDCOM from Ancestry.com, place it in the mapped data path, and Claude can search people, browse family relationships, and explore ancestors and descendants. Data is automatically filtered to individuals born 1900 or later.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/ancestry-mcp/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/ancestry-mcp/assets/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-ancestry/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-ancestry/assets/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
@@ -22,9 +22,9 @@
   <DonateLink/>
   <Requires/>
 
-  <Config Name="MCP Port" Target="3000" Default="3002" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3002 to avoid conflict with ynab-mcp (3000) and media-mcp (3001)." Type="Port" Display="always" Required="true" Mask="false">3002</Config>
+  <Config Name="MCP Port" Target="3000" Default="3002" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3002 to avoid conflict with mcp-ynab (3000) and mcp-mediamanager (3001)." Type="Port" Display="always" Required="true" Mask="false">3002</Config>
 
-  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/ancestry-mcp" Mode="rw" Description="Directory for your GEDCOM export and the processed JSON. Place your Ancestry.com GEDCOM export here as 'ancestry.ged'. The container will process it into 'ancestry.json' on startup." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ancestry-mcp</Config>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mcp-ancestry" Mode="rw" Description="Directory for your GEDCOM export and the processed JSON. Place your Ancestry.com GEDCOM export here as 'ancestry.ged'. The container will process it into 'ancestry.json' on startup." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mcp-ancestry</Config>
 
   <Config Name="OAuth Client ID" Target="OAUTH_CLIENT_ID" Default="" Mode="" Description="OAuth client ID for securing the MCP endpoint. Used with Claude.ai remote MCP integration." Type="Variable" Display="always" Required="false" Mask="false"></Config>
 

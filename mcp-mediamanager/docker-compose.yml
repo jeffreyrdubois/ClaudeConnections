@@ -2,9 +2,9 @@ services:
 
   # ── Media MCP Server ─────────────────────────────────────────────────────────
   # Tunnel is handled by the shared cloudflared container (see cloudflared/).
-  media-mcp:
+  mcp-mediamanager:
     build: .
-    container_name: media-mcp
+    container_name: mcp-mediamanager
     network_mode: bridge
     restart: unless-stopped
     ports:

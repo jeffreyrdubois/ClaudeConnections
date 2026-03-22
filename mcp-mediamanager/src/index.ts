@@ -111,7 +111,7 @@ function overseerrStatusLabel(status: number): string {
 // ── MCP Server Factory ────────────────────────────────────────────────────────
 
 function createMcpServer(): McpServer {
-  const server = new McpServer({ name: "media-mcp-server", version: "1.0.0" });
+  const server = new McpServer({ name: "mcp-mediamanager", version: "1.0.0" });
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SONARR — TV Show Management
@@ -636,7 +636,7 @@ function requireAuth(req: Request, res: Response, next: () => void) {
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "media-mcp-server",
+    service: "mcp-mediamanager",
     configured: {
       sonarr: !!(SONARR_URL && SONARR_API_KEY),
       radarr: !!(RADARR_URL && RADARR_API_KEY),

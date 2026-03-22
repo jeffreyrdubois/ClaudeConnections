@@ -40,7 +40,7 @@ function errorResponse(message: string) {
 
 function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: "ynab-mcp-server",
+    name: "mcp-ynab",
     version: "1.0.0",
   });
 
@@ -315,7 +315,7 @@ function requireAuth(req: Request, res: Response, next: () => void) {
 
 // Health check
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "ynab-mcp-server" });
+  res.json({ status: "ok", service: "mcp-ynab" });
 });
 
 // ── OAuth 2.0 ─────────────────────────────────────────────────────────────────

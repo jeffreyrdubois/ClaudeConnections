@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support/>
   <Project>https://github.com/jeffreyrdubois/ClaudeConnections</Project>
-  <Overview>Cloudflare Tunnel that securely exposes your MCP servers (ynab-mcp, media-mcp, ancestry-mcp) to Claude.ai without opening firewall ports. Configure ingress rules in the Cloudflare Zero Trust dashboard to route your custom domains to each MCP server's local port.</Overview>
+  <Overview>Cloudflare Tunnel that securely exposes your MCP servers (mcp-ynab, mcp-mediamanager, mcp-ancestry) to Claude.ai without opening firewall ports. Configure ingress rules in the Cloudflare Zero Trust dashboard to route your custom domains to each MCP server's local port.</Overview>
   <Category>Tools: Network:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/cloudflared/unraid-template.xml</TemplateURL>
