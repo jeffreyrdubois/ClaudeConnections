@@ -26,7 +26,7 @@
 
   <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mcp-ancestry" Mode="rw" Description="Directory for your GEDCOM export and the processed JSON. Place your Ancestry.com GEDCOM export here as 'ancestry.ged'. The container will process it into 'ancestry.json' on startup." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mcp-ancestry</Config>
 
-  <Config Name="OAuth Client ID" Target="OAUTH_CLIENT_ID" Default="" Mode="" Description="OAuth client ID for securing the MCP endpoint. Used with Claude.ai remote MCP integration." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="OAuth Client ID" Target="OAUTH_CLIENT_ID" Default="mcp-ancestry" Mode="" Description="OAuth client ID for securing the MCP endpoint. Used with Claude.ai remote MCP integration." Type="Variable" Display="always" Required="false" Mask="false">mcp-ancestry</Config>
 
   <Config Name="OAuth Client Secret" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="OAuth client secret / bearer token for securing the MCP endpoint. If set, all MCP requests must include this as a Bearer token." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
