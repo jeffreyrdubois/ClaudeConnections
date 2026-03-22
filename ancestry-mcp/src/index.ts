@@ -250,6 +250,7 @@ function createMcpServer(): McpServer {
         if (!fam) return [];
         const spouseId = person.sex === "M" ? fam.wife : fam.husb;
         return [{
+          family_id:      famId,
           spouse:         spouseId && data.individuals[spouseId] ? formatPerson(data.individuals[spouseId]) : null,
           marriage_date:  fam.marr_date,
           marriage_place: fam.marr_place,
@@ -273,10 +274,10 @@ function createMcpServer(): McpServer {
       if (!person) return errorResponse(`No individual found with ID: ${id}`);
 
       const result: {
-        person: ReturnType<typeof formatPerson>;
-        parents: ReturnType<typeof formatPerson>[];
+        person:   ReturnType<typeof formatPerson>;
+        parents:  { family_id: string; person: ReturnType<typeof formatPerson> }[];
         siblings: ReturnType<typeof formatPerson>[];
-        spouses: (ReturnType<typeof formatPerson> & { marriage_date: string | null; marriage_place: string | null })[];
+        spouses:  (ReturnType<typeof formatPerson> & { family_id: string; marriage_date: string | null; marriage_place: string | null })[];
         children: ReturnType<typeof formatPerson>[];
       } = {
         person:   formatPerson(person),
@@ -290,8 +291,8 @@ function createMcpServer(): McpServer {
       for (const famId of person.famc) {
         const fam = data.families[famId];
         if (!fam) continue;
-        if (fam.husb && data.individuals[fam.husb]) result.parents.push(formatPerson(data.individuals[fam.husb]));
-        if (fam.wife && data.individuals[fam.wife]) result.parents.push(formatPerson(data.individuals[fam.wife]));
+        if (fam.husb && data.individuals[fam.husb]) result.parents.push({ family_id: famId, person: formatPerson(data.individuals[fam.husb]) });
+        if (fam.wife && data.individuals[fam.wife]) result.parents.push({ family_id: famId, person: formatPerson(data.individuals[fam.wife]) });
         for (const sibId of fam.chil) {
           if (sibId !== id && data.individuals[sibId]) {
             result.siblings.push(formatPerson(data.individuals[sibId]));
@@ -307,6 +308,7 @@ function createMcpServer(): McpServer {
         if (spouseId && data.individuals[spouseId]) {
           result.spouses.push({
             ...formatPerson(data.individuals[spouseId]),
+            family_id:      famId,
             marriage_date:  fam.marr_date,
             marriage_place: fam.marr_place,
           });
