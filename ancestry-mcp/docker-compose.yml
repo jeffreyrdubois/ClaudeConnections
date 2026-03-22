@@ -7,7 +7,7 @@ services:
   #   1. Export a GEDCOM from Ancestry.com (Ancestry > tree > ... > Export Tree)
   #   2. Copy the .ged file into the data directory (any filename works)
   #   3. Restart this container — the entrypoint will auto-process the GEDCOM
-  #      into ancestry.json (filtered to individuals born 1900 or later)
+  #      into ancestry.json
   ancestry-mcp:
     build: .
     container_name: ancestry-mcp
