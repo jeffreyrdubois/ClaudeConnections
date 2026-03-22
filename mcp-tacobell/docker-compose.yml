@@ -1,0 +1,24 @@
+services:
+
+  # ── Taco Bell MCP Server ──────────────────────────────────────────────────────
+  # Tunnel is handled by the shared cloudflared container (see cloudflared/).
+  mcp-tacobell:
+    build: .
+    container_name: mcp-tacobell
+    network_mode: bridge
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - TB_EMAIL=${TB_EMAIL}
+      - TB_PASSWORD=${TB_PASSWORD}
+      - TB_DEFAULT_STORE_ID=${TB_DEFAULT_STORE_ID}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
