@@ -336,19 +336,10 @@ function createMcpServer(): McpServer {
       store_address: z.string().optional().describe("Store address (for display purposes only)."),
     },
     async ({ store_id, store_name, store_address }) => {
-      try {
-        await ensureCsrfToken();
-        await tbPost("/pickup-location/pickupLocation", {
-          storeId: store_id,
-          CSRFToken: session.csrfToken,
-        });
-        session.storeId = store_id;
-        session.storeName = store_name ?? store_id;
-        session.storeAddress = store_address ?? "";
-        return ok({ success: true, message: `Store set to ${session.storeName}.`, session: sessionStatus() });
-      } catch (e: any) {
-        return errorResponse(`Failed to set store: ${e.message}`);
-      }
+      session.storeId = store_id;
+      session.storeName = store_name ?? store_id;
+      session.storeAddress = store_address ?? "";
+      return ok({ success: true, message: `Store set to ${session.storeName}.`, session: sessionStatus() });
     }
   );
 
