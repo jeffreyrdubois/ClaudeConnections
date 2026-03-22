@@ -74,7 +74,7 @@ function loadData(): void {
   try {
     const loaded = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as AncestryData;
     // Ensure _edits always exists even in older JSON files
-    data = { _edits: {}, ...loaded };
+    data = { ...loaded, _edits: loaded._edits ?? {} };
     const indCount = Object.keys(data.individuals).length;
     const famCount = Object.keys(data.families).length;
     const editCount = Object.keys(data._edits).length;
