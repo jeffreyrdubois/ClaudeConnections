@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
-import { existsSync, readFileSync, watchFile } from "fs";
+import { existsSync, readFileSync, watchFile, writeFileSync } from "fs";
 import { z } from "zod";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -37,6 +37,13 @@ interface Family {
   marr_place: string | null;
 }
 
+interface EditRecord {
+  type:        "added" | "updated";
+  entity_type: "individual" | "family";
+  timestamp:   string;
+  changes?:    Record<string, { from: unknown; to: unknown }>;
+}
+
 interface AncestryData {
   individuals: Record<string, Individual>;
   families:    Record<string, Family>;
@@ -45,6 +52,7 @@ interface AncestryData {
     total_individuals: number;
     total_families:    number;
   };
+  _edits: Record<string, EditRecord>;
 }
 
 // ── In-Memory Store ────────────────────────────────────────────────────────────
@@ -53,6 +61,7 @@ let data: AncestryData = {
   individuals: {},
   families:    {},
   metadata: { source_file: "", total_individuals: 0, total_families: 0 },
+  _edits:      {},
 };
 
 function loadData(): void {
@@ -62,10 +71,13 @@ function loadData(): void {
     return;
   }
   try {
-    data = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as AncestryData;
+    const loaded = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as AncestryData;
+    // Ensure _edits always exists even in older JSON files
+    data = { _edits: {}, ...loaded };
     const indCount = Object.keys(data.individuals).length;
     const famCount = Object.keys(data.families).length;
-    console.log(`Loaded ${indCount} individuals and ${famCount} families from ${DATA_PATH}`);
+    const editCount = Object.keys(data._edits).length;
+    console.log(`Loaded ${indCount} individuals, ${famCount} families, ${editCount} pending edits from ${DATA_PATH}`);
   } catch (e: any) {
     console.error(`Failed to load ${DATA_PATH}: ${e.message}`);
   }
@@ -73,11 +85,58 @@ function loadData(): void {
 
 loadData();
 
+// Prevent reload loop when we write the file ourselves
+let selfWrite = false;
+
 // Reload automatically when the JSON file is updated (e.g. after re-running the Python script)
 watchFile(DATA_PATH, { interval: 10_000 }, () => {
+  if (selfWrite) { selfWrite = false; return; }
   console.log("Data file changed — reloading...");
   loadData();
 });
+
+function saveData(): void {
+  selfWrite = true;
+  writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
+}
+
+// ── Edit Helpers ───────────────────────────────────────────────────────────────
+
+function extractYear(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const m = dateStr.match(/\b(\d{4})\b/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function nextIndividualId(): string {
+  const nums = Object.keys(data.individuals)
+    .map(id => parseInt(id.replace(/[^0-9]/g, "")))
+    .filter(n => !isNaN(n));
+  return `@I${nums.length > 0 ? Math.max(...nums) + 1 : 1}@`;
+}
+
+function nextFamilyId(): string {
+  const nums = Object.keys(data.families)
+    .map(id => parseInt(id.replace(/[^0-9]/g, "")))
+    .filter(n => !isNaN(n));
+  return `@F${nums.length > 0 ? Math.max(...nums) + 1 : 1}@`;
+}
+
+function recordEdit(id: string, record: EditRecord): void {
+  // If already marked "added", keep it as "added" but merge any field-level changes
+  const existing = data._edits[id];
+  if (existing?.type === "added" && record.type === "updated") {
+    data._edits[id] = {
+      ...existing,
+      timestamp: record.timestamp,
+      changes: { ...(existing.changes ?? {}), ...(record.changes ?? {}) },
+    };
+  } else {
+    data._edits[id] = existing?.type === "updated" && record.type === "updated"
+      ? { ...record, changes: { ...(existing.changes ?? {}), ...(record.changes ?? {}) } }
+      : record;
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -346,6 +405,229 @@ function createMcpServer(): McpServer {
           }, null, 2),
         }],
       };
+    }
+  );
+
+  // ── Tool: update_person ────────────────────────────────────────────────────
+  server.tool(
+    "update_person",
+    "Update an existing individual's details. Only the fields you provide will change. All edits are tracked so you can review them later.",
+    {
+      id:          z.string().describe("The individual's GEDCOM ID, e.g. @I123@."),
+      name:        z.string().optional().describe("Full name."),
+      sex:         z.enum(["M", "F"]).optional().describe("Sex: M or F."),
+      birth_date:  z.string().optional().describe("Birth date, e.g. '15 MAR 1932'."),
+      birth_place: z.string().optional().describe("Birth place."),
+      death_date:  z.string().optional().describe("Death date, e.g. '22 JUN 1998'."),
+      death_place: z.string().optional().describe("Death place."),
+    },
+    async ({ id, name, sex, birth_date, birth_place, death_date, death_place }) => {
+      const person = data.individuals[id];
+      if (!person) return errorResponse(`No individual found with ID: ${id}`);
+
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+
+      if (name        !== undefined && name        !== person.name)        { changes.name        = { from: person.name,        to: name        }; person.name        = name;        }
+      if (sex         !== undefined && sex         !== person.sex)         { changes.sex         = { from: person.sex,         to: sex         }; person.sex         = sex;         }
+      if (birth_date  !== undefined && birth_date  !== person.birth_date)  { changes.birth_date  = { from: person.birth_date,  to: birth_date  }; person.birth_date  = birth_date;  person.birth_year  = extractYear(birth_date);  }
+      if (birth_place !== undefined && birth_place !== person.birth_place) { changes.birth_place = { from: person.birth_place, to: birth_place }; person.birth_place = birth_place; }
+      if (death_date  !== undefined && death_date  !== person.death_date)  { changes.death_date  = { from: person.death_date,  to: death_date  }; person.death_date  = death_date;  person.death_year  = extractYear(death_date);  }
+      if (death_place !== undefined && death_place !== person.death_place) { changes.death_place = { from: person.death_place, to: death_place }; person.death_place = death_place; }
+
+      if (Object.keys(changes).length === 0)
+        return { content: [{ type: "text", text: "No changes made — provided values already match existing data." }] };
+
+      recordEdit(id, { type: "updated", entity_type: "individual", timestamp: new Date().toISOString(), changes });
+      saveData();
+      return { content: [{ type: "text", text: JSON.stringify({ updated: id, changes }, null, 2) }] };
+    }
+  );
+
+  // ── Tool: add_person ───────────────────────────────────────────────────────
+  server.tool(
+    "add_person",
+    "Add a new individual to the family tree. Returns the new person's ID. Optionally link them as a child in an existing family.",
+    {
+      name:             z.string().describe("Full name of the person."),
+      sex:              z.enum(["M", "F"]).optional().describe("Sex: M or F."),
+      birth_date:       z.string().optional().describe("Birth date, e.g. '15 MAR 1932'."),
+      birth_place:      z.string().optional().describe("Birth place."),
+      death_date:       z.string().optional().describe("Death date, e.g. '22 JUN 1998'."),
+      death_place:      z.string().optional().describe("Death place."),
+      parent_family_id: z.string().optional().describe("Family ID to add this person as a child, e.g. @F12@."),
+    },
+    async ({ name, sex, birth_date, birth_place, death_date, death_place, parent_family_id }) => {
+      const id = nextIndividualId();
+
+      const person: Individual = {
+        id,
+        name:        name ?? null,
+        sex:         sex ?? null,
+        birth_date:  birth_date  ?? null,
+        birth_year:  extractYear(birth_date ?? null),
+        birth_place: birth_place ?? null,
+        death_date:  death_date  ?? null,
+        death_year:  extractYear(death_date ?? null),
+        death_place: death_place ?? null,
+        fams: [],
+        famc: [],
+      };
+
+      data.individuals[id] = person;
+
+      if (parent_family_id) {
+        const fam = data.families[parent_family_id];
+        if (fam) {
+          fam.chil.push(id);
+          person.famc.push(parent_family_id);
+        }
+      }
+
+      recordEdit(id, { type: "added", entity_type: "individual", timestamp: new Date().toISOString() });
+      saveData();
+      return { content: [{ type: "text", text: JSON.stringify({ added: id, person: formatPerson(person) }, null, 2) }] };
+    }
+  );
+
+  // ── Tool: update_marriage ──────────────────────────────────────────────────
+  server.tool(
+    "update_marriage",
+    "Update the marriage date and/or place for an existing family record. Use get_family to find the family ID.",
+    {
+      family_id:   z.string().describe("The family's GEDCOM ID, e.g. @F12@."),
+      marr_date:   z.string().optional().describe("Marriage date, e.g. '10 JUN 1945'."),
+      marr_place:  z.string().optional().describe("Marriage place."),
+    },
+    async ({ family_id, marr_date, marr_place }) => {
+      const fam = data.families[family_id];
+      if (!fam) return errorResponse(`No family found with ID: ${family_id}`);
+
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+
+      if (marr_date  !== undefined && marr_date  !== fam.marr_date)  { changes.marr_date  = { from: fam.marr_date,  to: marr_date  }; fam.marr_date  = marr_date;  }
+      if (marr_place !== undefined && marr_place !== fam.marr_place) { changes.marr_place = { from: fam.marr_place, to: marr_place }; fam.marr_place = marr_place; }
+
+      if (Object.keys(changes).length === 0)
+        return { content: [{ type: "text", text: "No changes made — provided values already match existing data." }] };
+
+      recordEdit(family_id, { type: "updated", entity_type: "family", timestamp: new Date().toISOString(), changes });
+      saveData();
+      return { content: [{ type: "text", text: JSON.stringify({ updated: family_id, changes }, null, 2) }] };
+    }
+  );
+
+  // ── Tool: add_marriage ─────────────────────────────────────────────────────
+  server.tool(
+    "add_marriage",
+    "Create a new family record linking two people as spouses. Optionally include marriage date/place and children IDs.",
+    {
+      husb_id:    z.string().optional().describe("GEDCOM ID of the husband/spouse 1."),
+      wife_id:    z.string().optional().describe("GEDCOM ID of the wife/spouse 2."),
+      marr_date:  z.string().optional().describe("Marriage date, e.g. '10 JUN 1945'."),
+      marr_place: z.string().optional().describe("Marriage place."),
+      child_ids:  z.array(z.string()).optional().describe("GEDCOM IDs of children to include in this family."),
+    },
+    async ({ husb_id, wife_id, marr_date, marr_place, child_ids }) => {
+      if (!husb_id && !wife_id) return errorResponse("Provide at least one of husb_id or wife_id.");
+
+      if (husb_id && !data.individuals[husb_id]) return errorResponse(`No individual found with ID: ${husb_id}`);
+      if (wife_id && !data.individuals[wife_id]) return errorResponse(`No individual found with ID: ${wife_id}`);
+
+      const famId = nextFamilyId();
+      const fam: Family = {
+        id:         famId,
+        husb:       husb_id  ?? null,
+        wife:       wife_id  ?? null,
+        chil:       child_ids ?? [],
+        marr_date:  marr_date  ?? null,
+        marr_place: marr_place ?? null,
+      };
+      data.families[famId] = fam;
+
+      // Link spouses
+      if (husb_id) data.individuals[husb_id].fams.push(famId);
+      if (wife_id) data.individuals[wife_id].fams.push(famId);
+
+      // Link children
+      for (const childId of (child_ids ?? [])) {
+        const child = data.individuals[childId];
+        if (child && !child.famc.includes(famId)) child.famc.push(famId);
+      }
+
+      recordEdit(famId, { type: "added", entity_type: "family", timestamp: new Date().toISOString() });
+      saveData();
+      return { content: [{ type: "text", text: JSON.stringify({ added: famId, family: fam }, null, 2) }] };
+    }
+  );
+
+  // ── Tool: add_child_to_family ──────────────────────────────────────────────
+  server.tool(
+    "add_child_to_family",
+    "Link an existing individual as a child in an existing family record.",
+    {
+      family_id: z.string().describe("The family's GEDCOM ID, e.g. @F12@."),
+      person_id: z.string().describe("The individual's GEDCOM ID to add as a child."),
+    },
+    async ({ family_id, person_id }) => {
+      const fam    = data.families[family_id];
+      const person = data.individuals[person_id];
+      if (!fam)    return errorResponse(`No family found with ID: ${family_id}`);
+      if (!person) return errorResponse(`No individual found with ID: ${person_id}`);
+      if (fam.chil.includes(person_id)) return { content: [{ type: "text", text: `${person_id} is already a child in family ${family_id}.` }] };
+
+      fam.chil.push(person_id);
+      if (!person.famc.includes(family_id)) person.famc.push(family_id);
+
+      recordEdit(family_id, { type: "updated", entity_type: "family", timestamp: new Date().toISOString(), changes: { chil: { from: fam.chil.filter(c => c !== person_id), to: fam.chil } } });
+      saveData();
+      return { content: [{ type: "text", text: `Linked ${person.name ?? person_id} as a child in family ${family_id}.` }] };
+    }
+  );
+
+  // ── Tool: get_changes ──────────────────────────────────────────────────────
+  server.tool(
+    "get_changes",
+    "List all edits made to the family tree since the last GEDCOM import: added individuals/families and updated fields.",
+    {},
+    async () => {
+      const edits  = data._edits ?? {};
+      const added  = Object.entries(edits).filter(([, e]) => e.type === "added");
+      const updated = Object.entries(edits).filter(([, e]) => e.type === "updated");
+
+      const formatAdded = ([id, e]: [string, EditRecord]) => {
+        const record = e.entity_type === "individual" ? data.individuals[id] : data.families[id];
+        return { id, entity_type: e.entity_type, timestamp: e.timestamp, record };
+      };
+      const formatUpdated = ([id, e]: [string, EditRecord]) => ({
+        id,
+        entity_type: e.entity_type,
+        timestamp:   e.timestamp,
+        changes:     e.changes,
+      });
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            total_edits: Object.keys(edits).length,
+            added:   added.map(formatAdded),
+            updated: updated.map(formatUpdated),
+          }, null, 2),
+        }],
+      };
+    }
+  );
+
+  // ── Tool: clear_changes ────────────────────────────────────────────────────
+  server.tool(
+    "clear_changes",
+    "Clear all tracked edits (added/updated flags). Use this after syncing changes back to Ancestry.com.",
+    {},
+    async () => {
+      const count = Object.keys(data._edits ?? {}).length;
+      data._edits = {};
+      saveData();
+      return { content: [{ type: "text", text: `Cleared ${count} tracked edit(s).` }] };
     }
   );
 
