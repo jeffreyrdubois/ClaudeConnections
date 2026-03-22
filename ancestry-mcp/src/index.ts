@@ -38,10 +38,11 @@ interface Family {
 }
 
 interface EditRecord {
-  type:        "added" | "updated";
+  type:        "added" | "updated" | "deleted";
   entity_type: "individual" | "family";
   timestamp:   string;
   changes?:    Record<string, { from: unknown; to: unknown }>;
+  snapshot?:   Individual | Family;  // preserved copy of deleted records
 }
 
 interface AncestryData {
@@ -123,19 +124,39 @@ function nextFamilyId(): string {
 }
 
 function recordEdit(id: string, record: EditRecord): void {
-  // If already marked "added", keep it as "added" but merge any field-level changes
   const existing = data._edits[id];
+
   if (existing?.type === "added" && record.type === "updated") {
-    data._edits[id] = {
-      ...existing,
-      timestamp: record.timestamp,
-      changes: { ...(existing.changes ?? {}), ...(record.changes ?? {}) },
-    };
-  } else {
-    data._edits[id] = existing?.type === "updated" && record.type === "updated"
-      ? { ...record, changes: { ...(existing.changes ?? {}), ...(record.changes ?? {}) } }
-      : record;
+    // Newly added record edited further — keep "added" (get_changes returns current state anyway)
+    data._edits[id] = { ...existing, timestamp: record.timestamp };
+    return;
   }
+
+  if (existing?.type === "updated" && record.type === "updated") {
+    // Preserve the original "from" values; only advance the "to" values.
+    // If a field is changed back to its original value, remove it from the diff.
+    const merged: Record<string, { from: unknown; to: unknown }> = { ...(existing.changes ?? {}) };
+    for (const [field, change] of Object.entries(record.changes ?? {})) {
+      const prev = merged[field];
+      if (prev) {
+        if (prev.from === change.to) {
+          delete merged[field]; // reverted to original — no net change
+        } else {
+          merged[field] = { from: prev.from, to: change.to };
+        }
+      } else {
+        merged[field] = change;
+      }
+    }
+    if (Object.keys(merged).length === 0) {
+      delete data._edits[id]; // all changes cancelled out
+    } else {
+      data._edits[id] = { ...record, changes: merged };
+    }
+    return;
+  }
+
+  data._edits[id] = record;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -584,15 +605,63 @@ function createMcpServer(): McpServer {
     }
   );
 
+  // ── Tool: remove_person ────────────────────────────────────────────────────
+  server.tool(
+    "remove_person",
+    "Remove an individual from the family tree. If they were newly added (not from the original GEDCOM), they vanish with no trace. If they came from the original GEDCOM, a 'deleted' entry is tracked so you know to remove them on Ancestry.com too.",
+    {
+      id: z.string().describe("The individual's GEDCOM ID to remove, e.g. @I123@."),
+    },
+    async ({ id }) => {
+      const person = data.individuals[id];
+      if (!person) return errorResponse(`No individual found with ID: ${id}`);
+
+      const wasAdded = data._edits[id]?.type === "added";
+
+      // Clean up family links
+      for (const famId of person.fams) {
+        const fam = data.families[famId];
+        if (fam) {
+          if (fam.husb === id) fam.husb = null;
+          if (fam.wife === id) fam.wife = null;
+        }
+      }
+      for (const famId of person.famc) {
+        const fam = data.families[famId];
+        if (fam) fam.chil = fam.chil.filter(c => c !== id);
+      }
+
+      delete data.individuals[id];
+
+      if (wasAdded) {
+        // Was newly added — remove all trace, nothing to sync
+        delete data._edits[id];
+      } else {
+        // Came from original GEDCOM — track deletion for Ancestry.com sync
+        data._edits[id] = {
+          type:        "deleted",
+          entity_type: "individual",
+          timestamp:   new Date().toISOString(),
+          snapshot:    person,
+        };
+      }
+
+      saveData();
+      const note = wasAdded ? "Was newly added — no sync needed." : "Deletion tracked for Ancestry.com sync.";
+      return { content: [{ type: "text", text: `Removed ${person.name ?? id}. ${note}` }] };
+    }
+  );
+
   // ── Tool: get_changes ──────────────────────────────────────────────────────
   server.tool(
     "get_changes",
     "List all edits made to the family tree since the last GEDCOM import: added individuals/families and updated fields.",
     {},
     async () => {
-      const edits  = data._edits ?? {};
-      const added  = Object.entries(edits).filter(([, e]) => e.type === "added");
+      const edits   = data._edits ?? {};
+      const added   = Object.entries(edits).filter(([, e]) => e.type === "added");
       const updated = Object.entries(edits).filter(([, e]) => e.type === "updated");
+      const deleted = Object.entries(edits).filter(([, e]) => e.type === "deleted");
 
       const formatAdded = ([id, e]: [string, EditRecord]) => {
         const record = e.entity_type === "individual" ? data.individuals[id] : data.families[id];
@@ -604,6 +673,12 @@ function createMcpServer(): McpServer {
         timestamp:   e.timestamp,
         changes:     e.changes,
       });
+      const formatDeleted = ([id, e]: [string, EditRecord]) => ({
+        id,
+        entity_type: e.entity_type,
+        timestamp:   e.timestamp,
+        snapshot:    e.snapshot,
+      });
 
       return {
         content: [{
@@ -612,6 +687,7 @@ function createMcpServer(): McpServer {
             total_edits: Object.keys(edits).length,
             added:   added.map(formatAdded),
             updated: updated.map(formatUpdated),
+            deleted: deleted.map(formatDeleted),
           }, null, 2),
         }],
       };
