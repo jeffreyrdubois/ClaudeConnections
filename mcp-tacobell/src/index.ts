@@ -683,28 +683,25 @@ app.post("/oauth/token", express.urlencoded({ extended: false }), (req: Request,
   res.status(400).json({ error: "unsupported_grant_type" });
 });
 
-// MCP endpoint
-const transports: Record<string, StreamableHTTPServerTransport> = {};
+// MCP endpoint — stateless: new server instance per request
+async function handleMcp(req: Request, res: Response) {
+  const mcpServer = createMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless
+  });
 
-app.all("/mcp", authenticate, async (req: Request, res: Response) => {
-  const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  let transport = sessionId ? transports[sessionId] : undefined;
+  res.on("finish", () => {
+    transport.close();
+    mcpServer.close();
+  });
 
-  if (!transport) {
-    transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
-      onsessioninitialized: (id) => { transports[id] = transport!; },
-    });
-    transport.onclose = () => {
-      const id = Object.keys(transports).find((k) => transports[k] === transport);
-      if (id) delete transports[id];
-    };
-    const mcpServer = createMcpServer();
-    await mcpServer.connect(transport);
-  }
-
+  await mcpServer.connect(transport);
   await transport.handleRequest(req, res, req.body);
-});
+}
+
+app.post("/mcp", authenticate, handleMcp);
+app.get("/mcp", authenticate, handleMcp);
+app.delete("/mcp", (_req, res) => res.status(405).json({ error: "Method not allowed" }));
 
 app.listen(PORT, () => {
   console.log(`mcp-tacobell listening on port ${PORT}`);
