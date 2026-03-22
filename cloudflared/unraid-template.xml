@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>cloudflared</Name>
+  <Repository>cloudflare/cloudflared:latest</Repository>
+  <Registry>https://hub.docker.com/r/cloudflare/cloudflared</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/jeffreyrdubois/ClaudeConnections</Project>
+  <Overview>Cloudflare Tunnel that securely exposes your MCP servers (ynab-mcp, media-mcp, ancestry-mcp) to Claude.ai without opening firewall ports. Configure ingress rules in the Cloudflare Zero Trust dashboard to route your custom domains to each MCP server's local port.</Overview>
+  <Category>Tools: Network:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/cloudflared/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/cloudflared/assets/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs>tunnel --no-autoupdate run</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Tunnel Token" Target="TUNNEL_TOKEN" Default="" Mode="" Description="Your Cloudflare Tunnel token. Get it from Cloudflare Zero Trust dashboard → Networks → Tunnels → your tunnel → Configure → Install and run a connector → copy the token value." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+</Container>
