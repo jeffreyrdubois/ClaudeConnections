@@ -102,7 +102,7 @@ async function tbGet(path: string, params?: Record<string, string>): Promise<any
   try { return JSON.parse(text); } catch { return text; }
 }
 
-async function tbPost(path: string, body: Record<string, string>, asJson = false, referer = TB_BASE): Promise<any> {
+async function tbPost(path: string, body: Record<string, any>, asJson = false, referer = TB_BASE): Promise<any> {
   const res = await tbFetch(path, {
     method: "POST",
     headers: {
@@ -411,33 +411,26 @@ function createMcpServer(): McpServer {
       try {
         await ensureCsrfToken();
 
-        let data: any;
-        if (customizations && customizations.length > 0) {
-          // Customized item — Hybris storefront uses the same /cart/add endpoint;
-          // ingredient modifications are expressed as modifier/component product codes.
-          // Free-text names are passed here and forwarded as-is; TB's backend maps
-          // common modifier names to their internal codes.
-          const adds = customizations.filter((c) => c.type === "add").map((c) => c.ingredient);
-          const removes = customizations.filter((c) => c.type === "remove").map((c) => c.ingredient);
-          const modifies = customizations.filter((c) => c.type === "modify").map((c) => c.ingredient);
-          data = await tbPost("/cart/add", {
-            productCode: product_code,
-            qty: String(quantity),
-            CSRFToken: session.csrfToken,
-            storeId: session.storeId,
+        // OCC cart entries endpoint — the same path handles both plain and
+        // customized items. pointOfService tells the backend which store this
+        // pickup is for. Customization modifiers (adds/removes/modifies) are
+        // forwarded as top-level fields; TB's OCC extension may honour them.
+        const adds = (customizations ?? []).filter((c) => c.type === "add").map((c) => c.ingredient);
+        const removes = (customizations ?? []).filter((c) => c.type === "remove").map((c) => c.ingredient);
+        const modifies = (customizations ?? []).filter((c) => c.type === "modify").map((c) => c.ingredient);
+
+        const data = await tbPost(
+          "/tacobellwebservices/v4/tacobell/users/current/carts/current/entries",
+          {
+            product: { code: product_code },
+            quantity,
+            pointOfService: { name: session.storeId },
             ...(adds.length ? { adds: adds.join(",") } : {}),
             ...(removes.length ? { removes: removes.join(",") } : {}),
             ...(modifies.length ? { modifies: modifies.join(",") } : {}),
-          });
-        } else {
-          // Standard item
-          data = await tbPost("/cart/add", {
-            productCode: product_code,
-            qty: String(quantity),
-            CSRFToken: session.csrfToken,
-            storeId: session.storeId,
-          });
-        }
+          },
+          true,  // send as JSON
+        );
 
         const item = MENU.find((i) => i.code === product_code);
         return ok({
@@ -460,14 +453,16 @@ function createMcpServer(): McpServer {
     async () => {
       try {
         await ensureCsrfToken();
-        // /cart returns the full cart page (HTML or JSON depending on Accept header).
-        // The miniCart/SUBTOTAL endpoint is a UI widget that returns raw HTML;
-        // we skip it and rely on the main cart response only.
-        const cartPage = await tbGet("/cart");
+        // OCC cart endpoint — returns structured JSON with all entries, prices,
+        // and totals. fields=FULL includes line-item details.
+        const cartData = await tbGet(
+          "/tacobellwebservices/v4/tacobell/users/current/carts/current",
+          { fields: "FULL" },
+        );
 
         return ok({
           store: sessionStatus(),
-          cart: cartPage,
+          cart: cartData,
         });
       } catch (e: any) {
         return errorResponse(`Failed to retrieve cart: ${e.message}`);
@@ -497,25 +492,24 @@ function createMcpServer(): McpServer {
       try {
         await ensureCsrfToken();
 
-        // Step 1: Proceed to checkout
-        const checkout = await tbGet("/checkout");
-
-        // Step 2: Place the order (submit the checkout form)
-        // The Referer must point to the checkout page (not the homepage) so TB's
-        // CSRF/session validation accepts the request. storeId tells the backend
-        // which location this pickup is for.
-        const order = await tbPost("/checkout/placeOrder", {
-          CSRFToken: session.csrfToken,
-          storeId: session.storeId,
-          ...(tip_percent ? { tipPercent: String(tip_percent) } : {}),
-        }, false, `${TB_BASE}/checkout`);
+        // OCC place-order endpoint. The cart identified as "current" is
+        // submitted; the backend resolves payment from the saved method on
+        // the account. cartId=current targets the active cart.
+        const order = await tbPost(
+          "/tacobellwebservices/v4/tacobell/users/current/orders",
+          {
+            cartId: "current",
+            ...(tip_percent ? { tipPercent: tip_percent } : {}),
+          },
+          true,  // send as JSON
+          `${TB_BASE}/checkout`,
+        );
 
         return ok({
           success: true,
           message: "Order placed! Head to your Taco Bell for pickup.",
           store: { id: session.storeId, name: session.storeName, address: session.storeAddress },
           order,
-          checkoutPage: typeof checkout === "string" ? "(HTML checkout page received)" : checkout,
         });
       } catch (e: any) {
         return errorResponse(
@@ -548,7 +542,12 @@ function createMcpServer(): McpServer {
       }
       try {
         await ensureCsrfToken();
-        const data = await tbPost(`/order/reorder/${order_id}`, { CSRFToken: session.csrfToken });
+        // OCC reorder — copies a past order's entries into a new cart, then places it.
+        const data = await tbPost(
+          `/tacobellwebservices/v4/tacobell/users/current/orders/${order_id}/reorder`,
+          { pointOfService: { name: session.storeId } },
+          true,
+        );
         return ok({ success: true, orderId: order_id, response: data });
       } catch (e: any) {
         return errorResponse(`Failed to reorder: ${e.message}`);
@@ -570,7 +569,10 @@ function createMcpServer(): McpServer {
       }
       try {
         await ensureCsrfToken();
-        const data = await tbGet("/account/orders", { pageSize: String(limit) });
+        const data = await tbGet(
+          "/tacobellwebservices/v4/tacobell/users/current/orders",
+          { pageSize: String(limit), fields: "FULL" },
+        );
         return ok({ orders: data });
       } catch (e: any) {
         return errorResponse(`Failed to retrieve order history: ${e.message}`);
