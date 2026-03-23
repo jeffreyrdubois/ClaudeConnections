@@ -293,10 +293,15 @@ function createMcpServer(): McpServer {
         // Taco Bell uses a client_credentials grant with their public web client ID
         // (tb_us_web) and the user's own email + password as identifier/credential.
         // No separate client secret is needed — confirmed from browser DevTools.
+        let oauthDiag = "";
         try {
           const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Origin": "https://www.tacobell.com",
+              "Referer": "https://www.tacobell.com/",
+            },
             body: new URLSearchParams({
               grant_type: "client_credentials",
               client_id: TB_CLIENT_ID,
@@ -304,18 +309,22 @@ function createMcpServer(): McpServer {
               credential: pass,
             }).toString(),
           });
+          const tokenBody = await tokenRes.text();
           if (tokenRes.ok) {
-            const tokenData = await tokenRes.json();
+            const tokenData = JSON.parse(tokenBody);
             session.accessToken = tokenData.access_token ?? "";
+            oauthDiag = "acquired";
+          } else {
+            oauthDiag = `HTTP ${tokenRes.status} — ${tokenBody.slice(0, 300)}`;
           }
-        } catch {
-          // Non-fatal — log the absence in the response below
+        } catch (tokenErr: any) {
+          oauthDiag = `fetch error — ${tokenErr.message}`;
         }
 
         return ok({
           success: true,
           message: "Logged in successfully.",
-          oauthToken: session.accessToken ? "acquired" : "not acquired — cart/order APIs may fail",
+          oauthToken: session.accessToken ? "acquired" : `not acquired: ${oauthDiag}`,
           session: sessionStatus(),
         });
       } catch (e: any) {
