@@ -27,6 +27,7 @@ const TB_BASE = "https://www.tacobell.com";
 interface Session {
   cookieJar: Record<string, string>;
   csrfToken: string;
+  accessToken: string;   // OAuth2 Bearer token for OCC user-scoped API calls
   storeId: string;
   storeName: string;
   storeAddress: string;
@@ -36,6 +37,7 @@ interface Session {
 const session: Session = {
   cookieJar: {},
   csrfToken: "",
+  accessToken: "",
   storeId: TB_DEFAULT_STORE_ID,
   storeName: "",
   storeAddress: "",
@@ -80,6 +82,10 @@ async function tbFetch(
     for (const [k, v] of Object.entries(options.params)) url.searchParams.set(k, v);
   }
 
+  // OCC user-scoped endpoints require an OAuth2 Bearer token; the session
+  // cookie from Spring Security is only valid for the web storefront.
+  const isOccUserPath = path.startsWith("/tacobellwebservices/") && path.includes("/users/");
+
   const headers: Record<string, string> = {
     "User-Agent": BROWSER_UA,
     "Accept": "application/json, text/html, */*",
@@ -87,6 +93,7 @@ async function tbFetch(
     "X-Requested-With": "XMLHttpRequest",
     "Cookie": serializeCookies(),
     ...(session.csrfToken ? { "CSRFToken": session.csrfToken } : {}),
+    ...(isOccUserPath && session.accessToken ? { "Authorization": `Bearer ${session.accessToken}` } : {}),
     ...(options.headers as Record<string, string> ?? {}),
   };
 
@@ -277,7 +284,39 @@ function createMcpServer(): McpServer {
           CSRFToken: session.csrfToken,
         });
         session.isLoggedIn = true;
-        return ok({ success: true, message: "Logged in successfully.", session: sessionStatus() });
+
+        // Fetch an OAuth2 Bearer token so OCC user-scoped endpoints
+        // (/users/current/carts, /users/current/orders, etc.) will accept
+        // our requests. The standard Hybris password-grant endpoint is used.
+        // OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET must be set as env vars.
+        if (OAUTH_CLIENT_SECRET) {
+          try {
+            const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                grant_type: "password",
+                client_id: OAUTH_CLIENT_ID,
+                client_secret: OAUTH_CLIENT_SECRET,
+                username: user,
+                password: pass,
+              }).toString(),
+            });
+            if (tokenRes.ok) {
+              const tokenData = await tokenRes.json();
+              session.accessToken = tokenData.access_token ?? "";
+            }
+          } catch {
+            // Non-fatal — Spring Security session may still work for some calls
+          }
+        }
+
+        return ok({
+          success: true,
+          message: "Logged in successfully.",
+          oauthToken: session.accessToken ? "acquired" : "not acquired (set OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET to enable OCC cart/order APIs)",
+          session: sessionStatus(),
+        });
       } catch (e: any) {
         return errorResponse(`Login failed: ${e.message}. Note: Taco Bell may challenge automated logins — if you get repeated 403 errors, try logging in via the website first to clear CAPTCHA, then retry.`);
       }
