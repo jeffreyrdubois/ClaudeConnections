@@ -102,14 +102,14 @@ async function tbGet(path: string, params?: Record<string, string>): Promise<any
   try { return JSON.parse(text); } catch { return text; }
 }
 
-async function tbPost(path: string, body: Record<string, string>, asJson = false): Promise<any> {
+async function tbPost(path: string, body: Record<string, string>, asJson = false, referer = TB_BASE): Promise<any> {
   const res = await tbFetch(path, {
     method: "POST",
     headers: {
       "Content-Type": asJson
         ? "application/json"
         : "application/x-www-form-urlencoded",
-      "Referer": TB_BASE,
+      "Referer": referer,
     },
     body: asJson ? JSON.stringify(body) : new URLSearchParams(body).toString(),
   });
@@ -413,24 +413,29 @@ function createMcpServer(): McpServer {
 
         let data: any;
         if (customizations && customizations.length > 0) {
-          // Customized item endpoint
+          // Customized item — Hybris storefront uses the same /cart/add endpoint;
+          // ingredient modifications are expressed as modifier/component product codes.
+          // Free-text names are passed here and forwarded as-is; TB's backend maps
+          // common modifier names to their internal codes.
           const adds = customizations.filter((c) => c.type === "add").map((c) => c.ingredient);
           const removes = customizations.filter((c) => c.type === "remove").map((c) => c.ingredient);
           const modifies = customizations.filter((c) => c.type === "modify").map((c) => c.ingredient);
-          data = await tbPost("/cart/add-composite", {
+          data = await tbPost("/cart/add", {
             productCode: product_code,
             qty: String(quantity),
             CSRFToken: session.csrfToken,
+            storeId: session.storeId,
             ...(adds.length ? { adds: adds.join(",") } : {}),
             ...(removes.length ? { removes: removes.join(",") } : {}),
             ...(modifies.length ? { modifies: modifies.join(",") } : {}),
           });
         } else {
-          // Standard item endpoint
+          // Standard item
           data = await tbPost("/cart/add", {
             productCode: product_code,
             qty: String(quantity),
             CSRFToken: session.csrfToken,
+            storeId: session.storeId,
           });
         }
 
@@ -455,12 +460,13 @@ function createMcpServer(): McpServer {
     async () => {
       try {
         await ensureCsrfToken();
-        const subtotal = await tbGet("/cart/miniCart/SUBTOTAL");
+        // /cart returns the full cart page (HTML or JSON depending on Accept header).
+        // The miniCart/SUBTOTAL endpoint is a UI widget that returns raw HTML;
+        // we skip it and rely on the main cart response only.
         const cartPage = await tbGet("/cart");
 
         return ok({
           store: sessionStatus(),
-          subtotal,
           cart: cartPage,
         });
       } catch (e: any) {
@@ -495,12 +501,14 @@ function createMcpServer(): McpServer {
         const checkout = await tbGet("/checkout");
 
         // Step 2: Place the order (submit the checkout form)
-        // The endpoint and required fields may vary — this targets the standard
-        // Hybris checkout submission path used by the community-documented API.
+        // The Referer must point to the checkout page (not the homepage) so TB's
+        // CSRF/session validation accepts the request. storeId tells the backend
+        // which location this pickup is for.
         const order = await tbPost("/checkout/placeOrder", {
           CSRFToken: session.csrfToken,
+          storeId: session.storeId,
           ...(tip_percent ? { tipPercent: String(tip_percent) } : {}),
-        });
+        }, false, `${TB_BASE}/checkout`);
 
         return ok({
           success: true,
