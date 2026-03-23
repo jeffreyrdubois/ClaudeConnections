@@ -155,16 +155,27 @@ async function ensureCsrfToken(): Promise<void> {
 // needed. Call it before any operation that touches cart entries.
 
 async function ensureCart(): Promise<void> {
-  const cartUrl = "/tacobellwebservices/v4/tacobell/users/current/carts/current";
-  try {
-    const res = await tbFetch(cartUrl, { method: "GET" });
-    if (res.ok) return; // cart already exists
-    if (res.status !== 404) throw new Error(`Unexpected status checking cart: ${res.status}`);
-  } catch {
-    // fall through to create
+  const base = "/tacobellwebservices/v4/tacobell/users/current/carts";
+  // Check for an existing active cart.
+  const checkRes = await tbFetch(`${base}/current`, { method: "GET" });
+  if (checkRes.ok) return; // cart already exists
+  if (checkRes.status !== 404) {
+    const body = await checkRes.text();
+    throw new Error(`Unexpected status checking cart: HTTP ${checkRes.status} — ${body.slice(0, 300)}`);
   }
-  // No active cart — create one
-  await tbPost("/tacobellwebservices/v4/tacobell/users/current/carts", {}, true);
+  // 404 → no active cart; create one. Include the store so the cart is
+  // immediately associated with the pickup location.
+  const createBody: Record<string, any> = {};
+  if (session.storeId) createBody.pointOfService = { name: session.storeId };
+  const createRes = await tbFetch(base, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(createBody),
+  });
+  if (!createRes.ok) {
+    const body = await createRes.text();
+    throw new Error(`Cart creation failed: HTTP ${createRes.status} — ${body.slice(0, 300)}`);
+  }
 }
 
 // ── Taco Bell Menu Data ───────────────────────────────────────────────────────
