@@ -22,13 +22,13 @@
   <DonateLink/>
   <Requires/>
 
-  <Config Name="MCP Port" Target="3000" Default="3002" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3002 to avoid conflicts with mcp-ynab (3000) and mcp-mediamanager (3001)." Type="Port" Display="always" Required="true" Mask="false">3002</Config>
+  <Config Name="MCP Port" Target="3000" Default="3003" Mode="tcp" Description="Port the MCP server listens on. Use this port when configuring Claude.ai remote MCP. Defaults to 3002 to avoid conflicts with mcp-ynab (3000) and mcp-mediamanager (3001)." Type="Port" Display="always" Required="true" Mask="false">3002</Config>
 
   <Config Name="Taco Bell Email" Target="TB_EMAIL" Default="" Mode="" Description="The email address for your tacobell.com account." Type="Variable" Display="always" Required="true" Mask="false"></Config>
 
   <Config Name="Taco Bell Password" Target="TB_PASSWORD" Default="" Mode="" Description="The password for your tacobell.com account." Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
-  <Config Name="Default Store ID" Target="TB_DEFAULT_STORE_ID" Default="" Mode="" Description="Optional: pre-set your local Taco Bell store ID so you don't have to find it every time. Use the tacobell_find_stores tool to discover your store ID, then paste it here." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Default Store ID" Target="TB_DEFAULT_STORE_ID" Default="029534" Mode="" Description="Optional: pre-set your local Taco Bell store ID so you don't have to find it every time. Use the tacobell_find_stores tool to discover your store ID, then paste it here." Type="Variable" Display="always" Required="false" Mask="false"></Config>
 
   <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude.ai. Leave blank to disable auth (not recommended if exposed to the internet)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
