@@ -139,6 +139,24 @@ async function ensureCsrfToken(): Promise<void> {
   }
 }
 
+// ── OCC Cart Bootstrap ────────────────────────────────────────────────────────
+// In Hybris OCC, /users/current/carts/current returns 404 when the user has no
+// active cart. This helper checks for an existing cart and creates one if
+// needed. Call it before any operation that touches cart entries.
+
+async function ensureCart(): Promise<void> {
+  const cartUrl = "/tacobellwebservices/v4/tacobell/users/current/carts/current";
+  try {
+    const res = await tbFetch(cartUrl, { method: "GET" });
+    if (res.ok) return; // cart already exists
+    if (res.status !== 404) throw new Error(`Unexpected status checking cart: ${res.status}`);
+  } catch {
+    // fall through to create
+  }
+  // No active cart — create one
+  await tbPost("/tacobellwebservices/v4/tacobell/users/current/carts", {}, true);
+}
+
 // ── Taco Bell Menu Data ───────────────────────────────────────────────────────
 // A snapshot of the Taco Bell menu. Product codes follow the pattern used by
 // the Hybris-based tacobell.com backend (as documented by the community library
@@ -410,6 +428,7 @@ function createMcpServer(): McpServer {
       }
       try {
         await ensureCsrfToken();
+        await ensureCart();
 
         // OCC cart entries endpoint — the same path handles both plain and
         // customized items. pointOfService tells the backend which store this
@@ -491,6 +510,7 @@ function createMcpServer(): McpServer {
       }
       try {
         await ensureCsrfToken();
+        await ensureCart();
 
         // OCC place-order endpoint. The cart identified as "current" is
         // submitted; the backend resolves payment from the saved method on
