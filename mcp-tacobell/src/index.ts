@@ -31,6 +31,10 @@ interface Session {
   cookieJar: Record<string, string>;
   csrfToken: string;
   accessToken: string;   // OAuth2 Bearer token for OCC user-scoped API calls
+  // Credentials are retained in-process so the token can be refreshed
+  // automatically when it expires — never written to disk.
+  email: string;
+  password: string;
   storeId: string;
   storeName: string;
   storeAddress: string;
@@ -41,6 +45,8 @@ const session: Session = {
   cookieJar: {},
   csrfToken: "",
   accessToken: "",
+  email: "",
+  password: "",
   storeId: TB_DEFAULT_STORE_ID,
   storeName: "",
   storeAddress: "",
@@ -149,12 +155,52 @@ async function ensureCsrfToken(): Promise<void> {
   }
 }
 
+// ── OCC Token Helper ──────────────────────────────────────────────────────────
+// Ensures a valid Bearer token is in session.accessToken, fetching one if not.
+// All /users/current/ OCC endpoints require this token; the Spring Security
+// cookie alone is not accepted there.
+
+async function ensureAccessToken(): Promise<void> {
+  if (session.accessToken) return; // already have one
+  if (!session.email || !session.password) {
+    throw new Error(
+      "No OAuth token and no credentials in session. Call tacobell_login first."
+    );
+  }
+  const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Origin": "https://www.tacobell.com",
+      "Referer": "https://www.tacobell.com/",
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: TB_CLIENT_ID,
+      identifier: session.email,
+      credential: session.password,
+    }).toString(),
+  });
+  const body = await tokenRes.text();
+  if (!tokenRes.ok) {
+    throw new Error(
+      `OAuth token fetch failed: HTTP ${tokenRes.status} — ${body.slice(0, 300)}`
+    );
+  }
+  const data = JSON.parse(body);
+  session.accessToken = data.access_token ?? "";
+  if (!session.accessToken) {
+    throw new Error(`OAuth response had no access_token: ${body.slice(0, 300)}`);
+  }
+}
+
 // ── OCC Cart Bootstrap ────────────────────────────────────────────────────────
 // In Hybris OCC, /users/current/carts/current returns 404 when the user has no
 // active cart. This helper checks for an existing cart and creates one if
 // needed. Call it before any operation that touches cart entries.
 
 async function ensureCart(): Promise<void> {
+  await ensureAccessToken(); // OCC user endpoints require Bearer token
   const base = "/tacobellwebservices/v4/tacobell/users/current/carts";
   // Check for an existing active cart.
   const checkRes = await tbFetch(`${base}/current`, { method: "GET" });
@@ -298,6 +344,8 @@ function createMcpServer(): McpServer {
           CSRFToken: session.csrfToken,
         });
         session.isLoggedIn = true;
+        session.email = user;
+        session.password = pass;
 
         // Fetch an OAuth2 Bearer token so OCC user-scoped endpoints
         // (/users/current/carts, /users/current/orders, etc.) accept our requests.
