@@ -9,6 +9,9 @@ import { z } from "zod";
 const TB_EMAIL = process.env.TB_EMAIL ?? "";
 const TB_PASSWORD = process.env.TB_PASSWORD ?? "";
 const TB_DEFAULT_STORE_ID = process.env.TB_DEFAULT_STORE_ID ?? "";
+// TB_CLIENT_ID is Taco Bell's own web OAuth client — distinct from OAUTH_CLIENT_ID
+// which is used by the MCP server itself for Claude authentication.
+const TB_CLIENT_ID = process.env.TB_CLIENT_ID ?? "tb_us_web";
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID ?? "mcp-tacobell";
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 const PORT = parseInt(process.env.PORT ?? "3000");
@@ -286,35 +289,33 @@ function createMcpServer(): McpServer {
         session.isLoggedIn = true;
 
         // Fetch an OAuth2 Bearer token so OCC user-scoped endpoints
-        // (/users/current/carts, /users/current/orders, etc.) will accept
-        // our requests. The standard Hybris password-grant endpoint is used.
-        // OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET must be set as env vars.
-        if (OAUTH_CLIENT_SECRET) {
-          try {
-            const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({
-                grant_type: "password",
-                client_id: OAUTH_CLIENT_ID,
-                client_secret: OAUTH_CLIENT_SECRET,
-                username: user,
-                password: pass,
-              }).toString(),
-            });
-            if (tokenRes.ok) {
-              const tokenData = await tokenRes.json();
-              session.accessToken = tokenData.access_token ?? "";
-            }
-          } catch {
-            // Non-fatal — Spring Security session may still work for some calls
+        // (/users/current/carts, /users/current/orders, etc.) accept our requests.
+        // Taco Bell uses a client_credentials grant with their public web client ID
+        // (tb_us_web) and the user's own email + password as identifier/credential.
+        // No separate client secret is needed — confirmed from browser DevTools.
+        try {
+          const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "client_credentials",
+              client_id: TB_CLIENT_ID,
+              identifier: user,
+              credential: pass,
+            }).toString(),
+          });
+          if (tokenRes.ok) {
+            const tokenData = await tokenRes.json();
+            session.accessToken = tokenData.access_token ?? "";
           }
+        } catch {
+          // Non-fatal — log the absence in the response below
         }
 
         return ok({
           success: true,
           message: "Logged in successfully.",
-          oauthToken: session.accessToken ? "acquired" : "not acquired (set OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET to enable OCC cart/order APIs)",
+          oauthToken: session.accessToken ? "acquired" : "not acquired — cart/order APIs may fail",
           session: sessionStatus(),
         });
       } catch (e: any) {
