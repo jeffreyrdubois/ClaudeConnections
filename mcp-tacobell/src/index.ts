@@ -9,6 +9,9 @@ import { z } from "zod";
 const TB_EMAIL = process.env.TB_EMAIL ?? "";
 const TB_PASSWORD = process.env.TB_PASSWORD ?? "";
 const TB_DEFAULT_STORE_ID = process.env.TB_DEFAULT_STORE_ID ?? "";
+// TB_CLIENT_ID is Taco Bell's own web OAuth client — distinct from OAUTH_CLIENT_ID
+// which is used by the MCP server itself for Claude authentication.
+const TB_CLIENT_ID = process.env.TB_CLIENT_ID ?? "tb_us_web";
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID ?? "mcp-tacobell";
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
 const PORT = parseInt(process.env.PORT ?? "3000");
@@ -27,6 +30,7 @@ const TB_BASE = "https://www.tacobell.com";
 interface Session {
   cookieJar: Record<string, string>;
   csrfToken: string;
+  accessToken: string;   // OAuth2 Bearer token for OCC user-scoped API calls
   storeId: string;
   storeName: string;
   storeAddress: string;
@@ -36,6 +40,7 @@ interface Session {
 const session: Session = {
   cookieJar: {},
   csrfToken: "",
+  accessToken: "",
   storeId: TB_DEFAULT_STORE_ID,
   storeName: "",
   storeAddress: "",
@@ -80,6 +85,10 @@ async function tbFetch(
     for (const [k, v] of Object.entries(options.params)) url.searchParams.set(k, v);
   }
 
+  // OCC user-scoped endpoints require an OAuth2 Bearer token; the session
+  // cookie from Spring Security is only valid for the web storefront.
+  const isOccUserPath = path.startsWith("/tacobellwebservices/") && path.includes("/users/");
+
   const headers: Record<string, string> = {
     "User-Agent": BROWSER_UA,
     "Accept": "application/json, text/html, */*",
@@ -87,6 +96,7 @@ async function tbFetch(
     "X-Requested-With": "XMLHttpRequest",
     "Cookie": serializeCookies(),
     ...(session.csrfToken ? { "CSRFToken": session.csrfToken } : {}),
+    ...(isOccUserPath && session.accessToken ? { "Authorization": `Bearer ${session.accessToken}` } : {}),
     ...(options.headers as Record<string, string> ?? {}),
   };
 
@@ -277,7 +287,37 @@ function createMcpServer(): McpServer {
           CSRFToken: session.csrfToken,
         });
         session.isLoggedIn = true;
-        return ok({ success: true, message: "Logged in successfully.", session: sessionStatus() });
+
+        // Fetch an OAuth2 Bearer token so OCC user-scoped endpoints
+        // (/users/current/carts, /users/current/orders, etc.) accept our requests.
+        // Taco Bell uses a client_credentials grant with their public web client ID
+        // (tb_us_web) and the user's own email + password as identifier/credential.
+        // No separate client secret is needed — confirmed from browser DevTools.
+        try {
+          const tokenRes = await tbFetch("/authorizationserver/oauth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "client_credentials",
+              client_id: TB_CLIENT_ID,
+              identifier: user,
+              credential: pass,
+            }).toString(),
+          });
+          if (tokenRes.ok) {
+            const tokenData = await tokenRes.json();
+            session.accessToken = tokenData.access_token ?? "";
+          }
+        } catch {
+          // Non-fatal — log the absence in the response below
+        }
+
+        return ok({
+          success: true,
+          message: "Logged in successfully.",
+          oauthToken: session.accessToken ? "acquired" : "not acquired — cart/order APIs may fail",
+          session: sessionStatus(),
+        });
       } catch (e: any) {
         return errorResponse(`Login failed: ${e.message}. Note: Taco Bell may challenge automated logins — if you get repeated 403 errors, try logging in via the website first to clear CAPTCHA, then retry.`);
       }
