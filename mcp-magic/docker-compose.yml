@@ -1,0 +1,29 @@
+services:
+
+  # ── Magic Collection MCP Server + Web UI ─────────────────────────────────────
+  # Web UI:  http://localhost:3003
+  # MCP:     http://localhost:3003/mcp
+  mcp-magic:
+    build: .
+    container_name: mcp-magic
+    network_mode: bridge
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    volumes:
+      - mcp-magic-data:/data
+    environment:
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - PORT=3000
+      - DATA_DIR=/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  mcp-magic-data:
+    driver: local
