@@ -14,6 +14,9 @@ FROM node:20-alpine AS server-builder
 
 WORKDIR /app
 
+# better-sqlite3 requires native build tools to compile from source
+RUN apk add --no-cache python3 make g++
+
 COPY package*.json ./
 RUN npm ci
 
