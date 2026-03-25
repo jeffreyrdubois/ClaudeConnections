@@ -38,8 +38,8 @@ RUN npm ci --omit=dev
 # Copy compiled server
 COPY --from=server-builder /app/dist ./dist
 
-# Copy built client (into dist/public so Express can serve it)
-COPY --from=client-builder /app/client/dist ./dist/public
+# Copy built client — vite outDir is "../dist/public" relative to client/, so /app/dist/public
+COPY --from=client-builder /app/dist/public ./dist/public
 
 # Data directory for SQLite DB
 RUN mkdir -p /data
