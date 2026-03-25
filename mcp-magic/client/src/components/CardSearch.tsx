@@ -8,10 +8,12 @@ interface CardSearchProps {
   onSelect: (card: ScryfallCard) => void;
   placeholder?: string;
   className?: string;
+  showSetFilter?: boolean;
 }
 
-export default function CardSearch({ onSelect, placeholder = "Search for a card...", className = "" }: CardSearchProps) {
+export default function CardSearch({ onSelect, placeholder = "Search for a card...", className = "", showSetFilter = false }: CardSearchProps) {
   const [query, setQuery] = useState("");
+  const [setFilter, setSetFilter] = useState("");
   const [results, setResults] = useState<ScryfallCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -25,7 +27,7 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const result = await searchScryfall(query);
+        const result = await searchScryfall(query, 1, setFilter.trim() || undefined);
         setResults(result.cards.slice(0, 12));
         setOpen(true);
       } catch {
@@ -36,7 +38,7 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
     }, 300);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
+  }, [query, setFilter]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -57,22 +59,33 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
-          className="input pl-9 pr-8"
-        />
-        {query && (
-          <button
-            onClick={() => { setQuery(""); setResults([]); setOpen(false); }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <div className={`flex gap-2 ${showSetFilter ? "" : ""}`}>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={placeholder}
+            className="input pl-9 pr-8 w-full"
+          />
+          {query && (
+            <button
+              onClick={() => { setQuery(""); setResults([]); setOpen(false); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        {showSetFilter && (
+          <input
+            type="text"
+            value={setFilter}
+            onChange={(e) => setSetFilter(e.target.value)}
+            placeholder="Set code (e.g. dom)"
+            className="input w-36 text-xs"
+          />
         )}
       </div>
 
@@ -97,7 +110,15 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-100 truncate">{card.name}</div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gray-500">{card.set_code?.toUpperCase()}</span>
+                  {/* Set icon from Scryfall CDN */}
+                  <img
+                    src={`https://svgs.scryfall.io/sets/${card.set_code}.svg`}
+                    alt={card.set_code}
+                    className="w-4 h-4 shrink-0 opacity-80"
+                    style={{ filter: "invert(0.7)" }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <span className="text-xs text-gray-400">{card.set_name || card.set_code?.toUpperCase()}</span>
                   <ManaCost cost={card.mana_cost} size="sm" />
                 </div>
                 <div className="text-xs text-gray-500 truncate">{card.type_line}</div>

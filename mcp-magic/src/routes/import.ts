@@ -76,9 +76,13 @@ importRouter.post("/csv", async (req: Request, res: Response) => {
   }
 
   // Detect column names (handle Manabox and common formats)
-  const headers = Object.keys(rows[0]).map((h) => h.toLowerCase());
-  const col = (aliases: string[]): string | undefined =>
-    aliases.find((a) => headers.includes(a));
+  // Use original header names so row[col] lookups work for any casing (e.g. "Name", "Set code")
+  const originalHeaders = Object.keys(rows[0]);
+  const lowerHeaders = originalHeaders.map((h) => h.toLowerCase());
+  const col = (aliases: string[]): string | undefined => {
+    const idx = lowerHeaders.findIndex((h) => aliases.includes(h));
+    return idx >= 0 ? originalHeaders[idx] : undefined;
+  };
 
   const nameCol = col(["name", "card name", "cardname"]);
   const countCol = col(["count", "quantity", "qty", "amount"]);

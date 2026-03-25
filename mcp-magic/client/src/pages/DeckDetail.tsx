@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Crown } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck } from "../api/client";
-import type { DeckCard } from "../types";
+import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck, setCardAsCommander } from "../api/client";
+import type { CollectionCard, DeckCard } from "../types";
 import { RARITY_COLORS } from "../types";
-import CardSearch from "../components/CardSearch";
+import CollectionCardSearch from "../components/CollectionCardSearch";
 import { ManaCost, ColorIdentity } from "../components/ManaSymbol";
 import { HoverCardImage } from "../components/CardImage";
 import ManaCurve from "../components/stats/ManaCurve";
@@ -13,6 +13,46 @@ import ColorPie from "../components/stats/ColorPie";
 import TypeBreakdown from "../components/stats/TypeBreakdown";
 
 const CATEGORIES = ["Commander", "Lands", "Ramp", "Card Draw", "Removal", "Counterspells", "Creatures", "Enchantments", "Artifacts", "Planeswalkers", "Wincon", "Utility", "Other"];
+
+// Color identity → MTG guild/shard/wedge/clan name
+function getDeckColorType(colors: string[]): string {
+  const sorted = [...colors].sort().join("");
+  const map: Record<string, string> = {
+    "": "Colorless",
+    "W": "Mono-White",
+    "U": "Mono-Blue",
+    "B": "Mono-Black",
+    "R": "Mono-Red",
+    "G": "Mono-Green",
+    "UW": "Azorius",
+    "BW": "Orzhov",
+    "RW": "Boros",
+    "GW": "Selesnya",
+    "BU": "Dimir",
+    "RU": "Izzet",
+    "GU": "Simic",
+    "BR": "Rakdos",
+    "BG": "Golgari",
+    "GR": "Gruul",
+    "BUW": "Esper",
+    "RUW": "Jeskai",
+    "GUW": "Bant",
+    "BRW": "Mardu",
+    "BGW": "Abzan",
+    "GRW": "Naya",
+    "BRU": "Grixis",
+    "BGU": "Sultai",
+    "GRU": "Temur",
+    "BGR": "Jund",
+    "BRUW": "Yore-Tiller",
+    "BGUW": "Witch-Maw",
+    "GRUW": "Ink-Treader",
+    "BGRW": "Dune-Brood",
+    "BGRU": "Glint-Eye",
+    "BGRUW": "Five-Color",
+  };
+  return map[sorted] || colors.join("");
+}
 
 export default function DeckDetail() {
   const { id } = useParams<{ id: string }>();
@@ -34,8 +74,8 @@ export default function DeckDetail() {
   });
 
   const addMutation = useMutation({
-    mutationFn: ({ name, category }: { name: string; category: string }) =>
-      addCardToDeck(deckId, { name, category }),
+    mutationFn: ({ scryfallId, category }: { scryfallId: string; category: string }) =>
+      addCardToDeck(deckId, { scryfall_id: scryfallId, category }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
@@ -44,6 +84,15 @@ export default function DeckDetail() {
 
   const removeMutation = useMutation({
     mutationFn: (scryfallId: string) => removeCardFromDeck(deckId, scryfallId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
+      queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
+    },
+  });
+
+  const commanderMutation = useMutation({
+    mutationFn: ({ scryfallId, isCommander }: { scryfallId: string; isCommander: boolean }) =>
+      setCardAsCommander(deckId, scryfallId, isCommander),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
@@ -61,6 +110,9 @@ export default function DeckDetail() {
     const qty = nl.reduce((s, c) => s + c.quantity, 0);
     return qty ? (tot / qty).toFixed(2) : "0";
   })();
+
+  const commanderColors = deck.commander_colors || [];
+  const deckType = getDeckColorType(commanderColors);
 
   // Group cards by category
   const categories = new Map<string, DeckCard[]>();
@@ -100,14 +152,21 @@ export default function DeckDetail() {
 
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold text-white">{deck.name}</h1>
-            {deck.commander_name && (
+            {deck.commander_name ? (
               <div className="text-gray-400 mt-0.5">
                 {deck.commander_name}
                 {deck.partner_name && <span> / {deck.partner_name}</span>}
               </div>
+            ) : (
+              <div className="text-gray-600 mt-0.5 text-sm italic">No commander set — mark a card as commander below</div>
             )}
-            <div className="flex items-center gap-3 mt-2">
-              <ColorIdentity identity={deck.commander_colors || []} />
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <ColorIdentity identity={commanderColors} />
+              {commanderColors.length > 0 && (
+                <span className="text-xs font-medium px-2 py-0.5 bg-gray-700/50 rounded-full text-gray-300">
+                  {deckType}
+                </span>
+              )}
               {legality && (
                 <div className={`flex items-center gap-1.5 text-xs font-medium ${legality.legal ? "text-green-400" : "text-red-400"}`}>
                   {legality.legal
@@ -162,12 +221,12 @@ export default function DeckDetail() {
           <div className="p-4 border-b border-gray-700/30 flex gap-3 items-center shrink-0">
             {showAddCard ? (
               <>
-                <CardSearch
-                  onSelect={(card) => {
-                    addMutation.mutate({ name: card.name, category: addCategory });
+                <CollectionCardSearch
+                  onSelect={(card: CollectionCard) => {
+                    addMutation.mutate({ scryfallId: card.scryfall_id, category: addCategory });
                     setShowAddCard(false);
                   }}
-                  placeholder="Search card to add..."
+                  placeholder="Search your collection..."
                   className="flex-1"
                 />
                 <select value={addCategory} onChange={(e) => setAddCategory(e.target.value)} className="select w-40">
@@ -212,7 +271,13 @@ export default function DeckDetail() {
               <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20">
                 <div className="text-xs font-medium text-amber-500 uppercase tracking-wider mb-2">Commander</div>
                 {commanders.map((dc) => (
-                  <CardRow key={dc.id} dc={dc} onRemove={() => removeMutation.mutate(dc.scryfall_id)} isCommander />
+                  <CardRow
+                    key={dc.id}
+                    dc={dc}
+                    onRemove={() => removeMutation.mutate(dc.scryfall_id)}
+                    onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: false })}
+                    isCommander
+                  />
                 ))}
               </div>
             )}
@@ -232,14 +297,19 @@ export default function DeckDetail() {
                     <th className="text-left py-2.5 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Type</th>
                     <th className="text-left py-2.5 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Category</th>
                     <th className="text-right py-2.5 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Price</th>
-                    <th className="py-2.5 px-4 w-10"></th>
+                    <th className="py-2.5 px-4 w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredCards
                     .sort((a, b) => a.card.cmc - b.card.cmc || a.card.name.localeCompare(b.card.name))
                     .map((dc) => (
-                      <CardRow key={dc.id} dc={dc} onRemove={() => removeMutation.mutate(dc.scryfall_id)} />
+                      <CardRow
+                        key={dc.id}
+                        dc={dc}
+                        onRemove={() => removeMutation.mutate(dc.scryfall_id)}
+                        onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
+                      />
                     ))}
                 </tbody>
               </table>
@@ -275,15 +345,16 @@ export default function DeckDetail() {
   );
 }
 
-function CardRow({ dc, onRemove, isCommander = false }: {
+function CardRow({ dc, onRemove, onSetCommander, isCommander = false }: {
   dc: DeckCard;
   onRemove: () => void;
+  onSetCommander: () => void;
   isCommander?: boolean;
 }) {
   const price = parseFloat(dc.card.prices?.usd || "0");
 
   return (
-    <tr className={`border-b border-gray-700/20 hover:bg-gray-800/30 transition-colors group ${isCommander ? "" : ""}`}>
+    <tr className="border-b border-gray-700/20 hover:bg-gray-800/30 transition-colors group">
       <td className="py-2 px-4">
         <HoverCardImage card={dc.card}>
           <div className="w-6 h-8 bg-gray-800 rounded overflow-hidden">
@@ -310,20 +381,29 @@ function CardRow({ dc, onRemove, isCommander = false }: {
       </td>
       <td className="py-2 px-4 text-right text-xs text-amber-400">${price.toFixed(2)}</td>
       <td className="py-2 px-4">
-        {!isCommander && (
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Set/unset commander */}
+          <button
+            onClick={onSetCommander}
+            title={isCommander ? "Remove as commander" : "Set as commander"}
+            className={`btn-ghost p-1.5 rounded-md ${isCommander ? "text-amber-400 hover:text-gray-400" : "text-gray-500 hover:text-amber-400"}`}
+          >
+            <Crown className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => { if (confirm(`Remove ${dc.card.name} from deck?`)) onRemove(); }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity btn-ghost p-1.5 rounded-md text-gray-500 hover:text-red-400"
+            className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-red-400"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-        )}
+        </div>
       </td>
     </tr>
   );
 }
 
-function getThumb(card: { image_uris?: Record<string, string> | null; card_faces?: Array<Record<string, unknown>> | null }): string | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getThumb(card: any): string | null {
   if (card.image_uris) return card.image_uris.small || null;
   if (card.card_faces) {
     const face = card.card_faces[0] as { image_uris?: Record<string, string> };

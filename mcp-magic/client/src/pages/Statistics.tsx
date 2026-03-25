@@ -1,17 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
-import { getCollectionStats } from "../api/client";
-import { BarChart3, TrendingUp, Layers, DollarSign } from "lucide-react";
+import { getCollectionStats, getFolders, getDecks } from "../api/client";
+import { BarChart3, TrendingUp, Layers, DollarSign, Filter, X } from "lucide-react";
+import { useState } from "react";
+import type { StatsFilter } from "../types";
 import ColorPie from "../components/stats/ColorPie";
 import ManaCurve from "../components/stats/ManaCurve";
 import TypeBreakdown from "../components/stats/TypeBreakdown";
-import { RARITY_COLORS } from "../types";
+import { RARITY_COLORS, CONDITION_LABELS } from "../types";
+
+const CARD_TYPES = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land"];
 
 export default function Statistics() {
+  const [filter, setFilter] = useState<StatsFilter>({});
+  const [showFilters, setShowFilters] = useState(false);
+
+  const { data: folders } = useQuery({ queryKey: ["folders"], queryFn: getFolders });
+  const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
+
   const { data: stats, isLoading } = useQuery({
-    queryKey: ["collection-stats"],
-    queryFn: getCollectionStats,
+    queryKey: ["collection-stats", filter],
+    queryFn: () => getCollectionStats(filter),
     staleTime: 60000,
   });
+
+  const hasFilter = Object.values(filter).some((v) => v !== undefined && v !== "");
+
+  function clearFilter() { setFilter({}); }
+  function setF<K extends keyof StatsFilter>(key: K, value: StatsFilter[K]) {
+    setFilter((prev) => ({ ...prev, [key]: value || undefined }));
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64 text-gray-500">Loading statistics...</div>;
@@ -45,12 +62,113 @@ export default function Statistics() {
 
   const totalValue = typeof stats.total_value === "number" ? stats.total_value : 0;
 
+  // Active filter label
+  const filterLabels: string[] = [];
+  if (filter.owner) filterLabels.push(`Owner: ${filter.owner}`);
+  if (filter.folder_id !== undefined) {
+    const folder = folders?.find((f) => f.id === Number(filter.folder_id));
+    filterLabels.push(`Folder: ${folder?.name || filter.folder_id}`);
+  }
+  if (filter.deck_id !== undefined) {
+    const deck = decks?.find((d) => d.id === Number(filter.deck_id));
+    filterLabels.push(`Deck: ${deck?.name || filter.deck_id}`);
+  }
+  if (filter.set_code) filterLabels.push(`Set: ${filter.set_code}`);
+  if (filter.condition) filterLabels.push(`Condition: ${filter.condition}`);
+  if (filter.type) filterLabels.push(`Type: ${filter.type}`);
+
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Collection Statistics</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Overview of your entire Magic collection</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Collection Statistics</h1>
+          <p className="text-gray-400 text-sm mt-0.5">
+            {filterLabels.length > 0
+              ? `Filtered: ${filterLabels.join(" · ")}`
+              : "Overview of your entire Magic collection"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasFilter && (
+            <button onClick={clearFilter} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-400 transition-colors">
+              <X className="w-4 h-4" /> Clear filters
+            </button>
+          )}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+              showFilters || hasFilter
+                ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                : "bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200"
+            }`}
+          >
+            <Filter className="w-4 h-4" /> Filters
+          </button>
+        </div>
       </div>
+
+      {/* Filter panel */}
+      {showFilters && (
+        <div className="card p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Owner</label>
+            <select value={filter.owner || ""} onChange={(e) => setF("owner", e.target.value || undefined)} className="select w-full">
+              <option value="">All Owners</option>
+              <option value="Jeffrey">Jeffrey</option>
+              <option value="Abby">Abby</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Folder</label>
+            <select
+              value={filter.folder_id !== undefined ? String(filter.folder_id) : ""}
+              onChange={(e) => setF("folder_id", e.target.value !== "" ? (e.target.value === "null" ? null : parseInt(e.target.value)) : undefined)}
+              className="select w-full"
+            >
+              <option value="">All Folders</option>
+              <option value="null">Unassigned</option>
+              {folders?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Deck</label>
+            <select
+              value={filter.deck_id !== undefined ? String(filter.deck_id) : ""}
+              onChange={(e) => setF("deck_id", e.target.value ? parseInt(e.target.value) : undefined)}
+              className="select w-full"
+            >
+              <option value="">All Decks</option>
+              {decks?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Set Code</label>
+            <input
+              type="text"
+              placeholder="e.g. dom, mh3"
+              value={filter.set_code || ""}
+              onChange={(e) => setF("set_code", e.target.value || undefined)}
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Condition</label>
+            <select value={filter.condition || ""} onChange={(e) => setF("condition", e.target.value || undefined)} className="select w-full">
+              <option value="">All Conditions</option>
+              {Object.entries(CONDITION_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{k} — {v}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Type</label>
+            <select value={filter.type || ""} onChange={(e) => setF("type", e.target.value || undefined)} className="select w-full">
+              <option value="">All Types</option>
+              {CARD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Key stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

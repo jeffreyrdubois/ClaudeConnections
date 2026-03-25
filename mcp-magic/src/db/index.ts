@@ -93,6 +93,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_scryfall_name ON scryfall_cards(name);
 `);
 
+// Migrations — add new columns without breaking existing databases
+try { db.exec("ALTER TABLE collection_cards ADD COLUMN owner TEXT"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE collection_cards ADD COLUMN legal TEXT NOT NULL DEFAULT 'Y'"); } catch { /* already exists */ }
+// Unique constraint: a scryfall_id can only appear in one deck at a time
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_cards_scryfall ON deck_cards(scryfall_id)"); } catch { /* already exists */ }
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface ScryfallCard {
@@ -133,6 +139,8 @@ export interface CollectionCard {
   notes: string | null;
   purchase_price: number | null;
   added_at: number;
+  owner: string | null;
+  legal: string; // 'Y' | 'N'
 }
 
 export interface Folder {
@@ -326,6 +334,8 @@ export interface CollectionFilter {
   type?: string;
   foil?: boolean;
   condition?: string;
+  owner?: string;
+  legal?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
@@ -351,6 +361,14 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
   if (filter.condition) {
     sql += " AND cc.condition = ?";
     params.push(filter.condition);
+  }
+  if (filter.owner) {
+    sql += " AND cc.owner = ?";
+    params.push(filter.owner);
+  }
+  if (filter.legal) {
+    sql += " AND cc.legal = ?";
+    params.push(filter.legal);
   }
   sql += " ORDER BY sc.name";
 
@@ -381,10 +399,12 @@ export function addCollectionCard(data: {
   language: string;
   notes?: string;
   purchase_price?: number;
+  owner?: string | null;
+  legal?: string;
 }): CollectionRow {
   const result = db.prepare(`
-    INSERT INTO collection_cards (scryfall_id, folder_id, quantity, foil, condition, language, notes, purchase_price)
-    VALUES (@scryfall_id, @folder_id, @quantity, @foil, @condition, @language, @notes, @purchase_price)
+    INSERT INTO collection_cards (scryfall_id, folder_id, quantity, foil, condition, language, notes, purchase_price, owner, legal)
+    VALUES (@scryfall_id, @folder_id, @quantity, @foil, @condition, @language, @notes, @purchase_price, @owner, @legal)
     RETURNING id
   `).get({
     scryfall_id: data.scryfall_id,
@@ -395,6 +415,8 @@ export function addCollectionCard(data: {
     language: data.language,
     notes: data.notes ?? null,
     purchase_price: data.purchase_price ?? null,
+    owner: data.owner ?? null,
+    legal: data.legal ?? "Y",
   }) as { id: number };
   return getCollectionCardById(result.id)!;
 }
@@ -407,6 +429,8 @@ export function updateCollectionCard(id: number, data: Partial<{
   language: string;
   notes: string;
   purchase_price: number;
+  owner: string | null;
+  legal: string;
 }>): CollectionRow | null {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -417,6 +441,8 @@ export function updateCollectionCard(id: number, data: Partial<{
   if ("language" in data) { fields.push("language = ?"); values.push(data.language); }
   if ("notes" in data) { fields.push("notes = ?"); values.push(data.notes); }
   if ("purchase_price" in data) { fields.push("purchase_price = ?"); values.push(data.purchase_price); }
+  if ("owner" in data) { fields.push("owner = ?"); values.push(data.owner ?? null); }
+  if ("legal" in data) { fields.push("legal = ?"); values.push(data.legal); }
   if (!fields.length) return getCollectionCardById(id);
   values.push(id);
   db.prepare(`UPDATE collection_cards SET ${fields.join(", ")} WHERE id = ?`).run(...values);
@@ -427,51 +453,101 @@ export function deleteCollectionCard(id: number): void {
   db.prepare("DELETE FROM collection_cards WHERE id = ?").run(id);
 }
 
-export function getCollectionStats() {
+export interface StatsFilter {
+  owner?: string;
+  folder_id?: number | null;
+  condition?: string;
+  set_code?: string;
+  type?: string;
+  deck_id?: number;
+}
+
+function buildStatsWhere(filter: StatsFilter): { joins: string; where: string; params: unknown[] } {
+  let joins = "";
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filter.deck_id !== undefined) {
+    joins += " JOIN deck_cards dc_f ON dc_f.deck_id = ? AND dc_f.scryfall_id = cc.scryfall_id";
+    params.push(filter.deck_id);
+  }
+  if (filter.owner) { conditions.push("cc.owner = ?"); params.push(filter.owner); }
+  if (filter.folder_id !== undefined) {
+    if (filter.folder_id === null) conditions.push("cc.folder_id IS NULL");
+    else { conditions.push("cc.folder_id = ?"); params.push(filter.folder_id); }
+  }
+  if (filter.condition) { conditions.push("cc.condition = ?"); params.push(filter.condition); }
+  if (filter.set_code) { conditions.push("LOWER(sc.set_code) = LOWER(?)"); params.push(filter.set_code); }
+  if (filter.type) { conditions.push("LOWER(sc.type_line) LIKE LOWER(?)"); params.push(`%${filter.type}%`); }
+
+  return {
+    joins,
+    where: conditions.length ? "WHERE " + conditions.join(" AND ") : "",
+    params,
+  };
+}
+
+export function getCollectionStats(filter: StatsFilter = {}) {
+  const { joins, where, params } = buildStatsWhere(filter);
+
   const totals = db.prepare(`
     SELECT
       COUNT(*) as unique_entries,
       SUM(cc.quantity) as total_quantity,
       COUNT(DISTINCT cc.scryfall_id) as unique_cards
     FROM collection_cards cc
-  `).get() as { unique_entries: number; total_quantity: number; unique_cards: number };
+    JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
+  `).get(...params) as { unique_entries: number; total_quantity: number; unique_cards: number };
 
   const byColor = db.prepare(`
     SELECT sc.color_identity, SUM(cc.quantity) as count
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
     GROUP BY sc.color_identity
-  `).all() as { color_identity: string; count: number }[];
+  `).all(...params) as { color_identity: string; count: number }[];
 
   const byType = db.prepare(`
     SELECT sc.type_line, SUM(cc.quantity) as count
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
     GROUP BY sc.type_line
-  `).all() as { type_line: string; count: number }[];
+  `).all(...params) as { type_line: string; count: number }[];
 
   const byCmc = db.prepare(`
     SELECT sc.cmc, SUM(cc.quantity) as count
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
     GROUP BY sc.cmc
     ORDER BY sc.cmc
-  `).all() as { cmc: number; count: number }[];
+  `).all(...params) as { cmc: number; count: number }[];
 
   const byRarity = db.prepare(`
     SELECT sc.rarity, COUNT(DISTINCT cc.scryfall_id) as unique_cards, SUM(cc.quantity) as total_copies
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
     GROUP BY sc.rarity
-  `).all() as { rarity: string; unique_cards: number; total_copies: number }[];
+  `).all(...params) as { rarity: string; unique_cards: number; total_copies: number }[];
 
   const topByValue = db.prepare(`
     SELECT sc.name, sc.prices, SUM(cc.quantity) as qty
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
+    GROUP BY sc.name, sc.prices
     ORDER BY CAST(json_extract(sc.prices, '$.usd') AS REAL) DESC
     LIMIT 20
-  `).all() as { name: string; prices: string; qty: number }[];
+  `).all(...params) as { name: string; prices: string; qty: number }[];
 
   return {
     totals,
@@ -483,8 +559,24 @@ export function getCollectionStats() {
   };
 }
 
-export function getTotalCollectionValue(folderId?: number | null): number {
-  let sql = `
+export function getTotalCollectionValue(filterOrFolderId?: number | null | StatsFilter): number {
+  // Accept either legacy folderId or new StatsFilter
+  let joins = "";
+  let where = "";
+  let params: unknown[] = [];
+
+  if (filterOrFolderId !== null && typeof filterOrFolderId === "object") {
+    const built = buildStatsWhere(filterOrFolderId);
+    joins = built.joins;
+    where = built.where;
+    params = built.params;
+  } else if (filterOrFolderId !== undefined) {
+    const folderId = filterOrFolderId as number | null;
+    if (folderId === null) where = "WHERE cc.folder_id IS NULL";
+    else { where = "WHERE cc.folder_id = ?"; params = [folderId]; }
+  }
+
+  const sql = `
     SELECT SUM(
       CASE WHEN cc.foil = 1
         THEN COALESCE(CAST(json_extract(sc.prices, '$.usd_foil') AS REAL), CAST(json_extract(sc.prices, '$.usd') AS REAL), 0)
@@ -493,14 +585,22 @@ export function getTotalCollectionValue(folderId?: number | null): number {
     ) as total
     FROM collection_cards cc
     JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    ${joins}
+    ${where}
   `;
-  const params: unknown[] = [];
-  if (folderId !== undefined) {
-    sql += folderId === null ? " WHERE cc.folder_id IS NULL" : " WHERE cc.folder_id = ?";
-    if (folderId !== null) params.push(folderId);
-  }
   const result = db.prepare(sql).get(...params) as { total: number | null };
   return result.total ?? 0;
+}
+
+// Returns collection cards that are not assigned to any deck, with optional name search
+export function searchCollectionForDeck(query: string): CollectionRow[] {
+  const assignedIds = db.prepare(
+    "SELECT DISTINCT scryfall_id FROM deck_cards"
+  ).all() as { scryfall_id: string }[];
+  const assignedSet = new Set(assignedIds.map((r) => r.scryfall_id));
+
+  const cards = getCollection({ search: query });
+  return cards.filter((c) => !assignedSet.has(c.scryfall_id));
 }
 
 export function getCardQuantityInCollection(cardName: string): { total: number; entries: CollectionRow[] } {

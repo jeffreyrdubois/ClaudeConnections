@@ -44,6 +44,8 @@ export interface CollectionCard {
   notes: string | null;
   purchase_price: number | null;
   added_at: number;
+  owner: string | null;
+  legal: string; // 'Y' | 'N'
   // Joined Scryfall fields
   name: string;
   set_code: string;
@@ -127,6 +129,17 @@ export interface LegalityResult {
   issues: string[];
   card_count: number;
   commander_name: string | null;
+}
+
+// ── Stats filter ───────────────────────────────────────────────────────────────
+
+export interface StatsFilter {
+  owner?: string;
+  folder_id?: number | null | string;
+  condition?: string;
+  set_code?: string;
+  type?: string;
+  deck_id?: number | string;
 }
 
 // ── Statistics ─────────────────────────────────────────────────────────────────
