@@ -115,10 +115,12 @@ export default function Collection() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === displayCards.length) {
+    const allIds = new Set(displayCards.map((c) => c.id));
+    const allSelected = allIds.size > 0 && [...allIds].every((id) => selectedIds.has(id));
+    if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(displayCards.map((c) => c.id)));
+      setSelectedIds(allIds);
     }
   }
 
@@ -190,6 +192,10 @@ export default function Collection() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [cards, aggregate, groupBy, sortCol, sortDir]);
+
+  // Unique entry IDs in the current view — individual mode repeats rows for qty > 1,
+  // so we deduplicate before driving the "select all" checkbox state.
+  const displayEntryIds = useMemo(() => new Set(displayCards.map((c) => c.id)), [displayCards]);
 
   const totalValue = cards.reduce((sum, c) => sum + cardPrice(c) * c.quantity, 0);
   const totalQty = cards.reduce((s, c) => s + c.quantity, 0);
@@ -375,7 +381,7 @@ export default function Collection() {
                 <th className="py-3 px-3 w-8">
                   <input
                     type="checkbox"
-                    checked={displayCards.length > 0 && selectedIds.size === displayCards.length}
+                    checked={displayEntryIds.size > 0 && [...displayEntryIds].every((id) => selectedIds.has(id))}
                     onChange={toggleSelectAll}
                     className="w-3.5 h-3.5 rounded accent-amber-500 cursor-pointer"
                   />
