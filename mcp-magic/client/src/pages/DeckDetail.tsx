@@ -1,8 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Search, DollarSign,
-  Layers, Droplets, Map,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck } from "../api/client";
@@ -195,7 +192,7 @@ export default function DeckDetail() {
                       {cat}
                       {cat !== "All" && (
                         <span className="ml-1 text-gray-600">
-                          ({categories.get(cat)?.reduce((s, c) => s + c.quantity, 0) || 0})
+                          ({categories.get(cat)?.reduce((s: number, c: DeckCard) => s + c.quantity, 0) || 0})
                         </span>
                       )}
                     </button>

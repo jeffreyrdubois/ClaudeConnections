@@ -720,10 +720,8 @@ export function getDeckStats(id: number) {
     const mainType = getMainType(c.type_line || "");
     typeCounts[mainType] = (typeCounts[mainType] || 0) + qty;
 
-    // Value
-    const price = c.foil
-      ? parseFloat(c.prices?.usd_foil || c.prices?.usd || "0")
-      : parseFloat(c.prices?.usd || "0");
+    // Value (foil not tracked at deck-card level; use non-foil price)
+    const price = parseFloat(c.prices?.usd || "0");
     totalValue += price * qty;
   }
 
