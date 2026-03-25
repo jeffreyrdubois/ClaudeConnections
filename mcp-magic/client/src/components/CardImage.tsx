@@ -1,14 +1,20 @@
 import { useState } from "react";
-import type { ScryfallCard } from "../types";
+
+// Minimal duck-type — both ScryfallCard and CollectionCard satisfy this
+export interface CardLike {
+  name: string;
+  image_uris: Record<string, string> | null;
+  card_faces: Array<Record<string, unknown>> | null;
+}
 
 interface CardImageProps {
-  card: ScryfallCard;
+  card: CardLike;
   size?: "small" | "normal" | "large";
   className?: string;
   showHover?: boolean;
 }
 
-function getImageUrl(card: ScryfallCard, size: "small" | "normal" | "large"): string | null {
+function getImageUrl(card: CardLike, size: "small" | "normal" | "large"): string | null {
   if (card.image_uris) return card.image_uris[size] || card.image_uris.normal || null;
   if (card.card_faces && card.card_faces[0]) {
     const face = card.card_faces[0] as { image_uris?: Record<string, string> };
@@ -27,7 +33,7 @@ export default function CardImage({ card, size = "normal", className = "", showH
       <div className={`bg-gray-800 flex items-center justify-center rounded-lg border border-gray-700 ${className}`}>
         <div className="text-center p-3">
           <div className="text-gray-500 text-xs font-medium">{card.name}</div>
-          <div className="text-gray-600 text-xs mt-1">{card.set_code?.toUpperCase()}</div>
+          <div className="text-gray-600 text-xs mt-1">No image</div>
         </div>
       </div>
     );
@@ -51,7 +57,7 @@ export default function CardImage({ card, size = "normal", className = "", showH
 }
 
 // Hoverable card image — shows a large preview on hover
-export function HoverCardImage({ card, children }: { card: ScryfallCard; children: React.ReactNode }) {
+export function HoverCardImage({ card, children }: { card: CardLike; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
   const url = getImageUrl(card, "normal");
 

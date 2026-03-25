@@ -31,7 +31,8 @@ export interface ScryfallCard {
 
 export type Condition = "NM" | "LP" | "MP" | "HP" | "DMG";
 
-export interface CollectionCard extends ScryfallCard {
+export interface CollectionCard {
+  // Collection entry fields
   id: number;
   scryfall_id: string;
   folder_id: number | null;
@@ -43,6 +44,29 @@ export interface CollectionCard extends ScryfallCard {
   notes: string | null;
   purchase_price: number | null;
   added_at: number;
+  // Joined Scryfall fields
+  name: string;
+  set_code: string;
+  set_name: string | null;
+  collector_number: string | null;
+  mana_cost: string | null;
+  cmc: number;
+  type_line: string | null;
+  oracle_text: string | null;
+  colors: string[];
+  color_identity: string[];
+  keywords: string[];
+  legalities: Record<string, string>;
+  prices: Record<string, string | null>;
+  image_uris: Record<string, string> | null;
+  card_faces: Array<Record<string, unknown>> | null;
+  power: string | null;
+  toughness: string | null;
+  loyalty: string | null;
+  produced_mana: string[] | null;
+  rarity: string | null;
+  artist: string | null;
+  layout: string | null;
 }
 
 export interface Folder {
