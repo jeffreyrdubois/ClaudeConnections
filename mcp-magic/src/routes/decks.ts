@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getDecks, getDeckById, createDeck, updateDeck, deleteDeck,
   addCardToDeck, removeCardFromDeck, getDeckStats, checkCommanderLegality,
+  getCollection, db,
 } from "../db/index.js";
 import { getCardByName } from "../scryfall/client.js";
 
@@ -208,6 +209,23 @@ decksRouter.post("/:id/cards", async (req, res) => {
     }
   }
 
+  // Enforce: card must be in the collection
+  const collectionCards = getCollection({});
+  const inCollection = collectionCards.some((c) => c.scryfall_id === scryfallId);
+  if (!inCollection) {
+    res.status(400).json({ error: "Card must be added to your collection before adding to a deck." });
+    return;
+  }
+
+  // Enforce: card can only be in one deck at a time (skip if already in THIS deck)
+  const existingAssignment = db.prepare(
+    "SELECT deck_id FROM deck_cards WHERE scryfall_id = ? AND deck_id != ?"
+  ).get(scryfallId, deck_id) as { deck_id: number } | undefined;
+  if (existingAssignment) {
+    res.status(400).json({ error: "This card is already assigned to another deck. Each physical card can only be in one deck." });
+    return;
+  }
+
   try {
     const dc = addCardToDeck({
       deck_id,
@@ -221,6 +239,26 @@ decksRouter.post("/:id/cards", async (req, res) => {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
   }
+});
+
+// PATCH /api/decks/:id/cards/:scryfallId — set/unset as commander
+decksRouter.patch("/:id/cards/:scryfallId", (req, res) => {
+  const deck_id = parseInt(req.params.id);
+  const { scryfallId } = req.params;
+  const deck = getDeckById(deck_id);
+  if (!deck) { res.status(404).json({ error: "Deck not found" }); return; }
+
+  const { is_commander } = req.body as { is_commander: boolean };
+
+  // Clear any existing commanders first if setting a new one
+  if (is_commander) {
+    db.prepare("UPDATE deck_cards SET is_commander = 0, category = 'Other' WHERE deck_id = ? AND is_commander = 1").run(deck_id);
+    db.prepare("UPDATE decks SET commander_scryfall_id = ?, updated_at = unixepoch() WHERE id = ?").run(scryfallId, deck_id);
+  }
+  db.prepare("UPDATE deck_cards SET is_commander = ?, category = ? WHERE deck_id = ? AND scryfall_id = ?")
+    .run(is_commander ? 1 : 0, is_commander ? "Commander" : "Other", deck_id, scryfallId);
+
+  res.json(getDeckById(deck_id));
 });
 
 // DELETE /api/decks/:id/cards/:scryfallId

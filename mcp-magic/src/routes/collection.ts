@@ -2,16 +2,17 @@ import { Router } from "express";
 import {
   getCollection, getCollectionCardById, addCollectionCard,
   updateCollectionCard, deleteCollectionCard, getCollectionStats,
-  getTotalCollectionValue, getCardQuantityInCollection,
+  getTotalCollectionValue, getCardQuantityInCollection, searchCollectionForDeck,
+  type StatsFilter,
 } from "../db/index.js";
 import { getCardByName } from "../scryfall/client.js";
 
 export const collectionRouter = Router();
 
 // GET /api/collection
-// Query: folder_id, search, colors (comma separated), type, foil, condition
+// Query: folder_id, search, colors (comma separated), type, foil, condition, owner, legal
 collectionRouter.get("/", (req, res) => {
-  const { folder_id, search, colors, type, foil, condition } = req.query as Record<string, string>;
+  const { folder_id, search, colors, type, foil, condition, owner, legal } = req.query as Record<string, string>;
   const cards = getCollection({
     folder_id: folder_id === "null" ? null : folder_id ? parseInt(folder_id) : undefined,
     search: search || undefined,
@@ -19,14 +20,25 @@ collectionRouter.get("/", (req, res) => {
     type: type || undefined,
     foil: foil === "true" ? true : foil === "false" ? false : undefined,
     condition: condition || undefined,
+    owner: owner || undefined,
+    legal: legal || undefined,
   });
   res.json(cards);
 });
 
-// GET /api/collection/stats
-collectionRouter.get("/stats", (_req, res) => {
-  const stats = getCollectionStats();
-  const totalValue = getTotalCollectionValue();
+// GET /api/collection/stats?owner=&folder_id=&condition=&set_code=&type=&deck_id=
+collectionRouter.get("/stats", (req, res) => {
+  const { owner, folder_id, condition, set_code, type, deck_id } = req.query as Record<string, string>;
+  const filter: StatsFilter = {
+    owner: owner || undefined,
+    folder_id: folder_id === "null" ? null : folder_id ? parseInt(folder_id) : undefined,
+    condition: condition || undefined,
+    set_code: set_code || undefined,
+    type: type || undefined,
+    deck_id: deck_id ? parseInt(deck_id) : undefined,
+  };
+  const stats = getCollectionStats(filter);
+  const totalValue = getTotalCollectionValue(filter);
   res.json({ ...stats, total_value: totalValue });
 });
 
@@ -49,8 +61,16 @@ collectionRouter.get("/quantity", (req, res) => {
   res.json(result);
 });
 
+// GET /api/collection/deck-search?q=
+// Returns collection cards not already assigned to any deck
+collectionRouter.get("/deck-search", (req, res) => {
+  const q = (req.query.q as string || "").trim();
+  const cards = searchCollectionForDeck(q);
+  res.json(cards);
+});
+
 // POST /api/collection
-// Body: { name, set_code?, scryfall_id?, quantity, foil, condition, language, folder_id?, notes?, purchase_price? }
+// Body: { name, set_code?, scryfall_id?, quantity, foil, condition, language, folder_id?, notes?, purchase_price?, owner?, legal? }
 collectionRouter.post("/", async (req, res) => {
   const body = req.body as {
     name?: string;
@@ -63,11 +83,12 @@ collectionRouter.post("/", async (req, res) => {
     folder_id?: number | null;
     notes?: string;
     purchase_price?: number;
+    owner?: string | null;
+    legal?: string;
   };
 
   let scryfallId = body.scryfall_id;
 
-  // Resolve scryfall_id from name if not provided
   if (!scryfallId) {
     if (!body.name) {
       res.status(400).json({ error: "Either scryfall_id or card name is required" });
@@ -104,6 +125,8 @@ collectionRouter.post("/", async (req, res) => {
       language: body.language || "en",
       notes: body.notes,
       purchase_price: body.purchase_price,
+      owner: body.owner ?? null,
+      legal: body.legal ?? "Y",
     });
     res.status(201).json(entry);
   } catch (e: unknown) {
@@ -127,6 +150,8 @@ collectionRouter.patch("/:id", (req, res) => {
     language: string;
     notes: string;
     purchase_price: number;
+    owner: string | null;
+    legal: string;
   }>;
   try {
     const updated = updateCollectionCard(id, body);

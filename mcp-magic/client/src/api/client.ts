@@ -1,6 +1,6 @@
 import type {
   CollectionCard, CollectionStats, DeckDetail, DeckSummary, DeckStats,
-  Folder, ImportResult, LegalityResult, SearchResult, ScryfallCard,
+  Folder, ImportResult, LegalityResult, SearchResult, ScryfallCard, StatsFilter,
 } from "../types";
 
 const BASE = "/api";
@@ -27,6 +27,8 @@ export interface CollectionFilter {
   type?: string;
   foil?: boolean;
   condition?: string;
+  owner?: string;
+  legal?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): Promise<CollectionCard[]> {
@@ -37,11 +39,25 @@ export function getCollection(filter: CollectionFilter = {}): Promise<Collection
   if (filter.type) params.set("type", filter.type);
   if (filter.foil !== undefined) params.set("foil", String(filter.foil));
   if (filter.condition) params.set("condition", filter.condition);
+  if (filter.owner) params.set("owner", filter.owner);
+  if (filter.legal) params.set("legal", filter.legal);
   return request<CollectionCard[]>(`/collection?${params}`);
 }
 
-export function getCollectionStats(): Promise<CollectionStats> {
-  return request<CollectionStats>("/collection/stats");
+export function getCollectionStats(filter: StatsFilter = {}): Promise<CollectionStats> {
+  const params = new URLSearchParams();
+  if (filter.owner) params.set("owner", filter.owner);
+  if (filter.folder_id !== undefined) params.set("folder_id", String(filter.folder_id));
+  if (filter.condition) params.set("condition", filter.condition);
+  if (filter.set_code) params.set("set_code", filter.set_code);
+  if (filter.type) params.set("type", filter.type);
+  if (filter.deck_id !== undefined) params.set("deck_id", String(filter.deck_id));
+  const qs = params.toString();
+  return request<CollectionStats>(`/collection/stats${qs ? "?" + qs : ""}`);
+}
+
+export function searchCollectionForDeck(query: string): Promise<CollectionCard[]> {
+  return request<CollectionCard[]>(`/collection/deck-search?q=${encodeURIComponent(query)}`);
 }
 
 export function getCollectionValue(folderId?: number | null): Promise<{ value: number; formatted: string }> {
@@ -60,6 +76,8 @@ export function addCardToCollection(data: {
   folder_id?: number | null;
   notes?: string;
   purchase_price?: number;
+  owner?: string | null;
+  legal?: string;
 }): Promise<CollectionCard> {
   return request<CollectionCard>("/collection", { method: "POST", body: JSON.stringify(data) });
 }
@@ -144,10 +162,18 @@ export function removeCardFromDeck(deckId: number, scryfallId: string): Promise<
   return request<void>(`/decks/${deckId}/cards/${scryfallId}`, { method: "DELETE" });
 }
 
+export function setCardAsCommander(deckId: number, scryfallId: string, isCommander: boolean): Promise<DeckDetail> {
+  return request<DeckDetail>(`/decks/${deckId}/cards/${scryfallId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_commander: isCommander }),
+  });
+}
+
 // ── Scryfall ───────────────────────────────────────────────────────────────────
 
-export function searchScryfall(query: string, page = 1): Promise<SearchResult> {
-  return request<SearchResult>(`/scryfall/search?q=${encodeURIComponent(query)}&page=${page}`);
+export function searchScryfall(query: string, page = 1, set?: string): Promise<SearchResult> {
+  const q = set ? `${query} set:${set}` : query;
+  return request<SearchResult>(`/scryfall/search?q=${encodeURIComponent(q)}&page=${page}`);
 }
 
 export function getCardByName(name: string, set?: string): Promise<ScryfallCard> {

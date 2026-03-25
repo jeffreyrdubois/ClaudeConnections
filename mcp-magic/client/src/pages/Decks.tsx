@@ -35,8 +35,8 @@ export default function Decks() {
 
       {showCreate && (
         <CreateDeckForm
-          onSave={async (name, commanderName) => {
-            await createDeck({ name, commander_name: commanderName });
+          onSave={async (name, description) => {
+            await createDeck({ name, description: description || undefined });
             queryClient.invalidateQueries({ queryKey: ["decks"] });
             setShowCreate(false);
           }}
@@ -142,21 +142,20 @@ function DeckCard({ deck, onClick, onDelete }: {
 }
 
 function CreateDeckForm({ onSave, onCancel }: {
-  onSave: (name: string, commanderName: string) => Promise<void>;
+  onSave: (name: string, description: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
-  const [commanderName, setCommanderName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    if (!name.trim() || !commanderName.trim()) return;
+    if (!name.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave(name.trim(), commanderName.trim());
+      await onSave(name.trim(), description.trim());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create deck");
       setSaving(false);
@@ -165,7 +164,8 @@ function CreateDeckForm({ onSave, onCancel }: {
 
   return (
     <div className="card p-4 mb-4 border-amber-500/30 max-w-lg">
-      <h3 className="text-sm font-semibold text-white mb-3">New Commander Deck</h3>
+      <h3 className="text-sm font-semibold text-white mb-1">New Commander Deck</h3>
+      <p className="text-xs text-gray-500 mb-3">Add cards to the deck first, then designate your commander using the crown icon.</p>
       <div className="space-y-3">
         <input
           type="text"
@@ -174,13 +174,6 @@ function CreateDeckForm({ onSave, onCancel }: {
           onChange={(e) => setName(e.target.value)}
           className="input"
           autoFocus
-        />
-        <input
-          type="text"
-          placeholder="Commander name (will look up on Scryfall)"
-          value={commanderName}
-          onChange={(e) => setCommanderName(e.target.value)}
-          className="input"
         />
         <input
           type="text"
@@ -194,7 +187,7 @@ function CreateDeckForm({ onSave, onCancel }: {
           <button onClick={onCancel} className="btn-secondary text-sm">Cancel</button>
           <button
             onClick={handleSave}
-            disabled={!name.trim() || !commanderName.trim() || saving}
+            disabled={!name.trim() || saving}
             className="btn-primary text-sm"
           >
             {saving ? "Creating..." : "Create Deck"}
