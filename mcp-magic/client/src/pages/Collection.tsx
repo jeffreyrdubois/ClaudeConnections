@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X } from "lucide-react";
+import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getCollection, getFolders, getDecks, deleteCollectionCard, updateCollectionCard, bulkUpdateCards } from "../api/client";
@@ -15,25 +15,37 @@ const OWNERS = ["Jeffrey", "Abby"];
 const GROUP_BY_OPTIONS = ["Owner", "Folder", "Set"] as const;
 type GroupByKey = (typeof GROUP_BY_OPTIONS)[number];
 
+const COND_ORDER: Record<string, number> = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
+type SortCol = "name" | "cmc" | "type" | "set" | "cond" | "owner" | "folder" | "deck" | "price";
+
+function cardPrice(card: CollectionCard): number {
+  return card.foil
+    ? parseFloat(card.prices?.usd_foil || card.prices?.usd || "0")
+    : parseFloat(card.prices?.usd || "0");
+}
+
 export default function Collection() {
   const [searchParams] = useSearchParams();
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
-  // Initialize folder filter from URL param (e.g. navigating from Folders page)
   const [filterFolder, setFilterFolder] = useState<string>(() => searchParams.get("folder_id") || "");
   const [filterColors, setFilterColors] = useState<string[]>([]);
   const [filterType, setFilterType] = useState("");
   const [filterCondition, setFilterCondition] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
   const [filterLegal, setFilterLegal] = useState("");
+  const [filterSet, setFilterSet] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aggregate, setAggregate] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByKey[]>([]);
+  const [sortCol, setSortCol] = useState<SortCol>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Bulk edit state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkOwner, setBulkOwner] = useState("");
   const [bulkFolder, setBulkFolder] = useState("");
-  const [bulkLegal, setBulkLegal] = useState("");
   const [bulkDeck, setBulkDeck] = useState("");
 
   const queryClient = useQueryClient();
@@ -42,7 +54,7 @@ export default function Collection() {
   const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
 
   const { data: cards = [], isLoading } = useQuery({
-    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal }],
+    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal, filterSet }],
     queryFn: () =>
       getCollection({
         search: search || undefined,
@@ -52,6 +64,7 @@ export default function Collection() {
         condition: filterCondition || undefined,
         owner: filterOwner || undefined,
         legal: filterLegal || undefined,
+        set_code: filterSet || undefined,
       }),
     staleTime: 30000,
   });
@@ -90,7 +103,6 @@ export default function Collection() {
     setSelectedIds(new Set());
     setBulkOwner("");
     setBulkFolder("");
-    setBulkLegal("");
     setBulkDeck("");
   }
 
@@ -114,52 +126,72 @@ export default function Collection() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
     const updates: Parameters<typeof bulkUpdateCards>[1] = {};
-    if (bulkOwner !== "") updates.owner = bulkOwner || null;
-    if (bulkFolder !== "") {
-      updates.folder_id = bulkFolder === "null" ? null : parseInt(bulkFolder);
-    }
-    if (bulkLegal !== "") updates.legal = bulkLegal;
+    if (bulkOwner !== "") updates.owner = bulkOwner.trim() || null;
+    if (bulkFolder !== "") updates.folder_id = bulkFolder === "null" ? null : parseInt(bulkFolder);
     if (bulkDeck !== "") updates.deck_id = parseInt(bulkDeck);
     if (Object.keys(updates).length === 0) return;
     bulkMutation.mutate({ ids, updates });
   }
 
-  // Build display rows: individual (expand by qty) or aggregate
-  const displayCards = useMemo(() => {
-    if (aggregate) {
-      if (groupBy.length === 0) return cards;
-      // Group by selected dimensions and sum quantities
-      const groups = new Map<string, CollectionCard>();
-      for (const card of cards) {
-        const key = [
-          card.scryfall_id,
-          groupBy.includes("Owner") ? (card.owner || "") : "",
-          groupBy.includes("Folder") ? (card.folder_id ?? "") : "",
-          groupBy.includes("Set") ? card.set_code : "",
-        ].join("|");
-        if (groups.has(key)) {
-          const ex = groups.get(key)!;
-          groups.set(key, { ...ex, quantity: ex.quantity + card.quantity });
-        } else {
-          groups.set(key, { ...card });
-        }
-      }
-      return [...groups.values()];
+  function handleSort(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => d === "asc" ? "desc" : "asc");
     } else {
-      // Individual mode: expand each entry by quantity (each row = 1 physical card)
-      return cards.flatMap((card) =>
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  }
+
+  // Build display rows: individual or aggregate, then sort
+  const displayCards = useMemo(() => {
+    let base: CollectionCard[];
+
+    if (aggregate) {
+      if (groupBy.length === 0) {
+        base = cards;
+      } else {
+        const groups = new Map<string, CollectionCard>();
+        for (const card of cards) {
+          const key = [
+            card.scryfall_id,
+            groupBy.includes("Owner") ? (card.owner || "") : "",
+            groupBy.includes("Folder") ? (card.folder_id ?? "") : "",
+            groupBy.includes("Set") ? card.set_code : "",
+          ].join("|");
+          if (groups.has(key)) {
+            const ex = groups.get(key)!;
+            groups.set(key, { ...ex, quantity: ex.quantity + card.quantity });
+          } else {
+            groups.set(key, { ...card });
+          }
+        }
+        base = [...groups.values()];
+      }
+    } else {
+      base = cards.flatMap((card) =>
         Array.from({ length: card.quantity }, () => ({ ...card, quantity: 1 }))
       );
     }
-  }, [cards, aggregate, groupBy]);
 
-  const totalValue = cards.reduce((sum, c) => {
-    const price = c.foil
-      ? parseFloat(c.prices?.usd_foil || c.prices?.usd || "0")
-      : parseFloat(c.prices?.usd || "0");
-    return sum + price * c.quantity;
-  }, 0);
+    // Sort
+    return [...base].sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case "name":   cmp = a.name.localeCompare(b.name); break;
+        case "cmc":    cmp = (a.cmc ?? 0) - (b.cmc ?? 0); break;
+        case "type":   cmp = (a.type_line || "").localeCompare(b.type_line || ""); break;
+        case "set":    cmp = a.set_code.localeCompare(b.set_code); break;
+        case "cond":   cmp = (COND_ORDER[a.condition] ?? 0) - (COND_ORDER[b.condition] ?? 0); break;
+        case "owner":  cmp = (a.owner || "").localeCompare(b.owner || ""); break;
+        case "folder": cmp = (a.folder_name || "").localeCompare(b.folder_name || ""); break;
+        case "deck":   cmp = (a.deck_name || "").localeCompare(b.deck_name || ""); break;
+        case "price":  cmp = cardPrice(a) - cardPrice(b); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [cards, aggregate, groupBy, sortCol, sortDir]);
 
+  const totalValue = cards.reduce((sum, c) => sum + cardPrice(c) * c.quantity, 0);
   const totalQty = cards.reduce((s, c) => s + c.quantity, 0);
 
   function toggleColor(color: string) {
@@ -171,6 +203,24 @@ export default function Collection() {
   function toggleGroupBy(key: GroupByKey) {
     setGroupBy((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }
+
+  function SortHeader({ col, label, className }: { col: SortCol; label: string; className?: string }) {
+    const active = sortCol === col;
+    return (
+      <th
+        className={`text-left py-3 px-4 text-xs font-medium uppercase tracking-wider cursor-pointer select-none transition-colors ${active ? "text-amber-400" : "text-gray-500 hover:text-gray-300"} ${className ?? ""}`}
+        onClick={() => handleSort(col)}
+      >
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {active
+            ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+            : <ArrowUpDown className="w-3 h-3 opacity-30" />
+          }
+        </span>
+      </th>
     );
   }
 
@@ -186,7 +236,6 @@ export default function Collection() {
             </p>
           </div>
           <div className="flex gap-2">
-            {/* Aggregate / Individual toggle */}
             <button
               onClick={() => setAggregate((v) => !v)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
@@ -208,7 +257,7 @@ export default function Collection() {
           </div>
         </div>
 
-        {/* Group by options (only in aggregate mode) */}
+        {/* Group by (aggregate mode only) */}
         {aggregate && (
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Group by:</span>
@@ -241,11 +290,7 @@ export default function Collection() {
             />
           </div>
 
-          <select
-            value={filterFolder}
-            onChange={(e) => setFilterFolder(e.target.value)}
-            className="select w-44"
-          >
+          <select value={filterFolder} onChange={(e) => setFilterFolder(e.target.value)} className="select w-44">
             <option value="">All Folders</option>
             <option value="unassigned">Unassigned</option>
             {folders?.map((f) => <option key={f.id} value={String(f.id)}>{f.name}</option>)}
@@ -275,6 +320,15 @@ export default function Collection() {
             <option value="Y">Legal</option>
             <option value="N">Not Legal</option>
           </select>
+
+          {/* Set code filter */}
+          <input
+            type="text"
+            placeholder="Set (e.g. mh3)"
+            value={filterSet}
+            onChange={(e) => setFilterSet(e.target.value.toLowerCase())}
+            className="input w-28 text-sm"
+          />
 
           {/* Color filters */}
           <div className="flex gap-1">
@@ -327,19 +381,20 @@ export default function Collection() {
                   />
                 </th>
                 <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider w-8"></th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Name</th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Mana</th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Type</th>
+                <SortHeader col="name" label="Name" />
+                <SortHeader col="cmc" label="Mana" />
+                <SortHeader col="type" label="Type" />
                 <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Colors</th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Set</th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Cond.</th>
+                <SortHeader col="set" label="Set" />
+                <SortHeader col="cond" label="Cond." />
                 {aggregate && (
                   <th className="text-center py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Qty</th>
                 )}
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Folder</th>
-                <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Owner</th>
+                <SortHeader col="owner" label="Owner" />
+                <SortHeader col="folder" label="Folder" />
+                <SortHeader col="deck" label="Deck" />
                 <th className="text-center py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Legal</th>
-                <th className="text-right py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Price</th>
+                <SortHeader col="price" label="Price" className="text-right" />
                 <th className="py-3 px-4 w-16"></th>
               </tr>
             </thead>
@@ -376,29 +431,19 @@ export default function Collection() {
           </div>
           <div className="w-px h-5 bg-gray-700" />
 
-          {/* Owner */}
           <select value={bulkOwner} onChange={(e) => setBulkOwner(e.target.value)} className="select text-xs py-1.5 w-28">
             <option value="">Owner…</option>
-            <option value="">— Clear —</option>
             <option value="Jeffrey">Jeffrey</option>
             <option value="Abby">Abby</option>
+            <option value=" ">— Clear —</option>
           </select>
 
-          {/* Folder */}
           <select value={bulkFolder} onChange={(e) => setBulkFolder(e.target.value)} className="select text-xs py-1.5 w-32">
             <option value="">Folder…</option>
             <option value="null">— Remove —</option>
             {folders?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
 
-          {/* Legal */}
-          <select value={bulkLegal} onChange={(e) => setBulkLegal(e.target.value)} className="select text-xs py-1.5 w-24">
-            <option value="">Legal…</option>
-            <option value="Y">Y — Legal</option>
-            <option value="N">N — Not Legal</option>
-          </select>
-
-          {/* Deck */}
           <select value={bulkDeck} onChange={(e) => setBulkDeck(e.target.value)} className="select text-xs py-1.5 w-32">
             <option value="">Add to deck…</option>
             {decks?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -406,7 +451,7 @@ export default function Collection() {
 
           <button
             onClick={applyBulk}
-            disabled={bulkMutation.isPending || (!bulkOwner && !bulkFolder && !bulkLegal && !bulkDeck)}
+            disabled={bulkMutation.isPending || (!bulkOwner.trim() && !bulkFolder && !bulkDeck)}
             className="btn-primary text-xs py-1.5 px-3 shrink-0"
           >
             {bulkMutation.isPending ? "Applying…" : "Apply"}
@@ -436,11 +481,8 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
   const [cond, setCond] = useState(card.condition);
   const [folderId, setFolderId] = useState<number | null>(card.folder_id);
   const [owner, setOwner] = useState(card.owner || "");
-  const [legal, setLegal] = useState(card.legal || "Y");
 
-  const price = card.foil
-    ? parseFloat(card.prices?.usd_foil || card.prices?.usd || "0")
-    : parseFloat(card.prices?.usd || "0");
+  const price = cardPrice(card);
 
   return (
     <tr className={`border-b border-gray-700/20 hover:bg-gray-800/30 transition-colors group ${selected ? "bg-amber-500/5" : ""}`}>
@@ -454,6 +496,7 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
           className="w-3.5 h-3.5 rounded accent-amber-500 cursor-pointer"
         />
       </td>
+
       {/* Hover image */}
       <td className="py-2 px-4">
         <HoverCardImage card={card}>
@@ -508,7 +551,6 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
         )}
       </td>
 
-      {/* Qty only shown in aggregate mode */}
       {aggregate && (
         <td className="py-2 px-4 text-center">
           {editing ? (
@@ -525,17 +567,7 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
         </td>
       )}
 
-      <td className="py-2 px-4">
-        {editing ? (
-          <select value={folderId ?? ""} onChange={(e) => setFolderId(e.target.value ? parseInt(e.target.value) : null)} className="select text-xs py-1 px-1.5 w-28">
-            <option value="">None</option>
-            {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-        ) : (
-          <span className="text-xs text-gray-500">{card.folder_name || "—"}</span>
-        )}
-      </td>
-
+      {/* Owner */}
       <td className="py-2 px-4">
         {editing ? (
           <select value={owner} onChange={(e) => setOwner(e.target.value)} className="select text-xs py-1 px-1.5 w-24">
@@ -548,17 +580,28 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
         )}
       </td>
 
-      <td className="py-2 px-4 text-center">
+      {/* Folder */}
+      <td className="py-2 px-4">
         {editing ? (
-          <select value={legal} onChange={(e) => setLegal(e.target.value)} className="select text-xs py-1 px-1.5 w-16">
-            <option value="Y">Y</option>
-            <option value="N">N</option>
+          <select value={folderId ?? ""} onChange={(e) => setFolderId(e.target.value ? parseInt(e.target.value) : null)} className="select text-xs py-1 px-1.5 w-28">
+            <option value="">None</option>
+            {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         ) : (
-          <span className={`text-xs font-medium ${card.legal === "N" ? "text-red-400" : "text-green-400"}`}>
-            {card.legal || "Y"}
-          </span>
+          <span className="text-xs text-gray-500">{card.folder_name || "—"}</span>
         )}
+      </td>
+
+      {/* Deck (read-only) */}
+      <td className="py-2 px-4">
+        <span className="text-xs text-gray-500">{card.deck_name || "—"}</span>
+      </td>
+
+      {/* Legal (read-only) */}
+      <td className="py-2 px-4 text-center">
+        <span className={`text-xs font-medium ${card.legal === "N" ? "text-red-400" : "text-green-400"}`}>
+          {card.legal || "Y"}
+        </span>
       </td>
 
       <td className="py-2 px-4 text-right">
@@ -572,7 +615,7 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
         {editing ? (
           <div className="flex gap-1">
             <button
-              onClick={() => onUpdate({ quantity: qty, condition: cond, folder_id: folderId, owner: owner || null, legal })}
+              onClick={() => onUpdate({ quantity: qty, condition: cond, folder_id: folderId, owner: owner || null })}
               className="btn-primary text-xs py-1 px-2"
             >
               Save
@@ -581,7 +624,6 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
           </div>
         ) : (
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Only allow editing in aggregate mode (editing a row with qty=1 in individual mode is fine too) */}
             <button onClick={onEdit} className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-gray-300">
               <Edit2 className="w-3.5 h-3.5" />
             </button>

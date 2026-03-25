@@ -13,7 +13,7 @@ export const collectionRouter = Router();
 // GET /api/collection
 // Query: folder_id, search, colors (comma separated), type, foil, condition, owner, legal
 collectionRouter.get("/", (req, res) => {
-  const { folder_id, search, colors, type, foil, condition, owner, legal } = req.query as Record<string, string>;
+  const { folder_id, search, colors, type, foil, condition, owner, legal, set_code } = req.query as Record<string, string>;
   const cards = getCollection({
     folder_id: folder_id === "null" ? null : folder_id ? parseInt(folder_id) : undefined,
     search: search || undefined,
@@ -23,6 +23,7 @@ collectionRouter.get("/", (req, res) => {
     condition: condition || undefined,
     owner: owner || undefined,
     legal: legal || undefined,
+    set_code: set_code || undefined,
   });
   res.json(cards);
 });
@@ -136,6 +137,34 @@ collectionRouter.post("/", async (req, res) => {
   }
 });
 
+// PATCH /api/collection/bulk  ← must be registered before /:id
+// Body: { ids: number[], updates: { folder_id?, owner?, deck_id? } }
+collectionRouter.patch("/bulk", (req, res) => {
+  const { ids, updates } = req.body as {
+    ids?: number[];
+    updates?: {
+      folder_id?: number | null;
+      owner?: string | null;
+      deck_id?: number;
+    };
+  };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids array required" });
+    return;
+  }
+  if (!updates || typeof updates !== "object") {
+    res.status(400).json({ error: "updates object required" });
+    return;
+  }
+  try {
+    const result = bulkUpdateCollectionCards(ids, updates);
+    res.json(result);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
 // PATCH /api/collection/:id
 collectionRouter.patch("/:id", (req, res) => {
   const id = parseInt(req.params.id);
@@ -157,35 +186,6 @@ collectionRouter.patch("/:id", (req, res) => {
   try {
     const updated = updateCollectionCard(id, body);
     res.json(updated);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: msg });
-  }
-});
-
-// PATCH /api/collection/bulk
-// Body: { ids: number[], updates: { folder_id?, owner?, legal?, deck_id? } }
-collectionRouter.patch("/bulk", (req, res) => {
-  const { ids, updates } = req.body as {
-    ids?: number[];
-    updates?: {
-      folder_id?: number | null;
-      owner?: string | null;
-      legal?: string;
-      deck_id?: number;
-    };
-  };
-  if (!Array.isArray(ids) || ids.length === 0) {
-    res.status(400).json({ error: "ids array required" });
-    return;
-  }
-  if (!updates || typeof updates !== "object") {
-    res.status(400).json({ error: "updates object required" });
-    return;
-  }
-  try {
-    const result = bulkUpdateCollectionCards(ids, updates);
-    res.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

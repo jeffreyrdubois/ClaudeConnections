@@ -29,6 +29,7 @@ export interface CollectionFilter {
   condition?: string;
   owner?: string;
   legal?: string;
+  set_code?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): Promise<CollectionCard[]> {
@@ -41,6 +42,7 @@ export function getCollection(filter: CollectionFilter = {}): Promise<Collection
   if (filter.condition) params.set("condition", filter.condition);
   if (filter.owner) params.set("owner", filter.owner);
   if (filter.legal) params.set("legal", filter.legal);
+  if (filter.set_code) params.set("set_code", filter.set_code);
   return request<CollectionCard[]>(`/collection?${params}`);
 }
 
@@ -235,7 +237,6 @@ export function logoutUser(): Promise<{ ok: boolean }> {
 export function bulkUpdateCards(ids: number[], updates: {
   folder_id?: number | null;
   owner?: string | null;
-  legal?: string;
   deck_id?: number;
 }): Promise<{ updated: number; deck_added: number; deck_skipped: number }> {
   return request("/collection/bulk", {
