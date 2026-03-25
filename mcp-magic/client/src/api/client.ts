@@ -201,3 +201,45 @@ export function importText(text: string, folderId?: number): Promise<ImportResul
     body: JSON.stringify({ text, folder_id: folderId }),
   });
 }
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  username: string;
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return request<AuthUser>("/auth/me");
+}
+
+export function loginUser(username: string, password: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function setupPassword(username: string, password: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/setup", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function logoutUser(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/auth/logout", { method: "POST" });
+}
+
+// ── Bulk Edit ──────────────────────────────────────────────────────────────────
+
+export function bulkUpdateCards(ids: number[], updates: {
+  folder_id?: number | null;
+  owner?: string | null;
+  legal?: string;
+  deck_id?: number;
+}): Promise<{ updated: number; deck_added: number; deck_skipped: number }> {
+  return request("/collection/bulk", {
+    method: "PATCH",
+    body: JSON.stringify({ ids, updates }),
+  });
+}

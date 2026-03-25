@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createMcpServer } from "./mcp/tools.js";
+import { authRouter, verifySessionToken, getCookieValue } from "./routes/auth.js";
 import { collectionRouter } from "./routes/collection.js";
 import { decksRouter } from "./routes/decks.js";
 import { foldersRouter } from "./routes/folders.js";
@@ -141,6 +142,19 @@ app.get("/mcp", requireAuth, handleMcp);
 app.delete("/mcp", (_req, res) => res.status(405).json({ error: "Method not allowed" }));
 
 // ── REST API Routes ────────────────────────────────────────────────────────────
+
+// Auth routes — no session required
+app.use("/api/auth", authRouter);
+
+// Session middleware for all other /api/ routes
+app.use("/api", (req: Request, res: Response, next: () => void) => {
+  const token = getCookieValue(req, "session");
+  if (!token) { res.status(401).json({ error: "Authentication required" }); return; }
+  const username = verifySessionToken(token);
+  if (!username) { res.status(401).json({ error: "Session expired" }); return; }
+  (req as Request & { user: { username: string } }).user = { username };
+  next();
+});
 
 app.use("/api/collection", collectionRouter);
 app.use("/api/folders", foldersRouter);

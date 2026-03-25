@@ -3,6 +3,7 @@ import {
   getCollection, getCollectionCardById, addCollectionCard,
   updateCollectionCard, deleteCollectionCard, getCollectionStats,
   getTotalCollectionValue, getCardQuantityInCollection, searchCollectionForDeck,
+  bulkUpdateCollectionCards,
   type StatsFilter,
 } from "../db/index.js";
 import { getCardByName } from "../scryfall/client.js";
@@ -156,6 +157,35 @@ collectionRouter.patch("/:id", (req, res) => {
   try {
     const updated = updateCollectionCard(id, body);
     res.json(updated);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// PATCH /api/collection/bulk
+// Body: { ids: number[], updates: { folder_id?, owner?, legal?, deck_id? } }
+collectionRouter.patch("/bulk", (req, res) => {
+  const { ids, updates } = req.body as {
+    ids?: number[];
+    updates?: {
+      folder_id?: number | null;
+      owner?: string | null;
+      legal?: string;
+      deck_id?: number;
+    };
+  };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids array required" });
+    return;
+  }
+  if (!updates || typeof updates !== "object") {
+    res.status(400).json({ error: "updates object required" });
+    return;
+  }
+  try {
+    const result = bulkUpdateCollectionCards(ids, updates);
+    res.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
