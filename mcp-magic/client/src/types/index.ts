@@ -46,6 +46,8 @@ export interface CollectionCard {
   added_at: number;
   owner: string | null;
   legal: string; // 'Y' | 'N'
+  deck_id: number | null;
+  deck_name: string | null;
   // Joined Scryfall fields
   name: string;
   set_code: string;

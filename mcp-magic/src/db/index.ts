@@ -314,6 +314,8 @@ export interface CollectionRow extends CollectionCard {
   oracle_text: string | null;
   power: string | null;
   toughness: string | null;
+  deck_id: number | null;
+  deck_name: string | null;
 }
 
 const COLLECTION_SELECT = `
@@ -324,10 +326,14 @@ const COLLECTION_SELECT = `
     sc.colors, sc.color_identity, sc.prices, sc.image_uris,
     sc.card_faces, sc.rarity, sc.legalities, sc.produced_mana,
     sc.power, sc.toughness, sc.loyalty,
-    f.name as folder_name
+    f.name as folder_name,
+    dkc.deck_id,
+    dk.name as deck_name
   FROM collection_cards cc
   JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
   LEFT JOIN folders f ON f.id = cc.folder_id
+  LEFT JOIN deck_cards dkc ON dkc.scryfall_id = cc.scryfall_id
+  LEFT JOIN decks dk ON dk.id = dkc.deck_id
 `;
 
 function parseCollectionRow(row: Record<string, unknown>): CollectionRow {
@@ -353,6 +359,7 @@ export interface CollectionFilter {
   condition?: string;
   owner?: string;
   legal?: string;
+  set_code?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
@@ -386,6 +393,10 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
   if (filter.legal) {
     sql += " AND cc.legal = ?";
     params.push(filter.legal);
+  }
+  if (filter.set_code) {
+    sql += " AND LOWER(sc.set_code) = LOWER(?)";
+    params.push(filter.set_code);
   }
   sql += " ORDER BY sc.name";
 
@@ -963,7 +974,6 @@ export function checkCommanderLegality(deck: DeckDetailRow): LegalityResult {
 export function bulkUpdateCollectionCards(ids: number[], updates: {
   folder_id?: number | null;
   owner?: string | null;
-  legal?: string;
   deck_id?: number;
 }): { updated: number; deck_added: number; deck_skipped: number } {
   return db.transaction(() => {
@@ -971,7 +981,6 @@ export function bulkUpdateCollectionCards(ids: number[], updates: {
     const values: unknown[] = [];
     if ("folder_id" in updates) { fields.push("folder_id = ?"); values.push(updates.folder_id ?? null); }
     if ("owner" in updates) { fields.push("owner = ?"); values.push(updates.owner ?? null); }
-    if ("legal" in updates) { fields.push("legal = ?"); values.push(updates.legal); }
 
     let updated = 0;
     if (fields.length > 0) {
