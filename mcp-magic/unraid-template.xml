@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>mcp-magic</Name>
+  <Repository>ghcr.io/jeffreyrdubois/mcp-magic:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/jeffreyrdubois/ClaudeConnections</Project>
+  <Overview>Magic: The Gathering collection manager with a web UI and MCP server. Track your card collection with condition, foil status, and folder organization. Build and analyze Commander decks with legality checking. Ask Claude to manage your collection, check card values, create decks, and get strategic advice — all backed by Scryfall data. The web UI and MCP endpoint share the same port: web UI at / and MCP at /mcp.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3003]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-magic/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-magic/assets/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web UI + MCP Port" Target="3000" Default="3003" Mode="tcp" Description="Port for both the web UI (http://[IP]:[PORT]/) and the MCP endpoint (http://[IP]:[PORT]/mcp). Use this port when configuring Claude remote MCP." Type="Port" Display="always" Required="true" Mask="false">3003</Config>
+
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/mcp-magic" Mode="rw" Description="Path on the host where the SQLite database (magic.db) will be stored. All collection data, decks, and folders are persisted here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mcp-magic</Config>
+
+  <Config Name="MCP Client ID" Target="OAUTH_CLIENT_ID" Default="mcp-magic" Mode="" Description="OAuth client ID used when configuring Claude remote MCP. You can leave this as 'mcp-magic'." Type="Variable" Display="always" Required="false" Mask="false">mcp-magic</Config>
+
+  <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="A secret token to protect your MCP endpoint. Set any long random string here and use the same value when configuring Claude. Leave blank to disable auth (only recommended on a trusted local network)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+</Container>
