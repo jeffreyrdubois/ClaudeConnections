@@ -3,9 +3,12 @@ import {
   BookOpen,
   FolderOpen,
   Layers,
+  LogOut,
   Swords,
+  User,
 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const NAV = [
   { to: "/collection", label: "Collection", icon: Layers },
@@ -15,6 +18,14 @@ const NAV = [
 ];
 
 export default function Layout() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login");
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -52,8 +63,23 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-gray-700/50">
+        {/* Footer — user + logout */}
+        <div className="p-3 border-t border-gray-700/50 space-y-2">
+          {user && (
+            <div className="flex items-center gap-2 px-1">
+              <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                <User className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <span className="text-sm text-gray-300 font-medium flex-1 truncate">{user.username}</span>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                className="p-1 text-gray-600 hover:text-red-400 transition-colors rounded"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <div className="text-xs text-gray-600 text-center">Powered by Scryfall</div>
         </div>
       </aside>

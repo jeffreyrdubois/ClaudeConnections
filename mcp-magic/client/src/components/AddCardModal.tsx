@@ -7,6 +7,7 @@ import { CONDITION_LABELS } from "../types";
 import CardSearch from "./CardSearch";
 import CardImage from "./CardImage";
 import { ManaCost } from "./ManaSymbol";
+import { useAuth } from "../context/AuthContext";
 
 interface AddCardModalProps {
   onClose: () => void;
@@ -15,6 +16,7 @@ interface AddCardModalProps {
 }
 
 export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: AddCardModalProps) {
+  const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(defaultCard || null);
   const [quantity, setQuantity] = useState(1);
   const [foil, setFoil] = useState(false);
@@ -22,7 +24,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
   const [language, setLanguage] = useState("en");
   const [folderId, setFolderId] = useState<number | null>(defaultFolderId ?? null);
   const [purchasePrice, setPurchasePrice] = useState("");
-  const [owner, setOwner] = useState("");
+  const [owner, setOwner] = useState(user?.username || "");
   const [legal, setLegal] = useState("Y");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

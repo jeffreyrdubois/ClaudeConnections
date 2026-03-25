@@ -91,6 +91,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_collection_folder ON collection_cards(folder_id);
   CREATE INDEX IF NOT EXISTS idx_deck_cards_deck ON deck_cards(deck_id);
   CREATE INDEX IF NOT EXISTS idx_scryfall_name ON scryfall_cards(name);
+
+  -- App users (Jeffrey and Abby)
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    created_at INTEGER DEFAULT (unixepoch())
+  );
+
+  -- Persistent key-value config (session secret, etc.)
+  CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 // Migrations — add new columns without breaking existing databases
@@ -98,6 +112,9 @@ try { db.exec("ALTER TABLE collection_cards ADD COLUMN owner TEXT"); } catch { /
 try { db.exec("ALTER TABLE collection_cards ADD COLUMN legal TEXT NOT NULL DEFAULT 'Y'"); } catch { /* already exists */ }
 // Unique constraint: a scryfall_id can only appear in one deck at a time
 try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_cards_scryfall ON deck_cards(scryfall_id)"); } catch { /* already exists */ }
+// Seed default users
+try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Jeffrey"); } catch { /* already exists */ }
+try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Abby"); } catch { /* already exists */ }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -942,6 +959,74 @@ export function checkCommanderLegality(deck: DeckDetailRow): LegalityResult {
 }
 
 // ── Unassigned Cards ───────────────────────────────────────────────────────────
+
+export function bulkUpdateCollectionCards(ids: number[], updates: {
+  folder_id?: number | null;
+  owner?: string | null;
+  legal?: string;
+  deck_id?: number;
+}): { updated: number; deck_added: number; deck_skipped: number } {
+  return db.transaction(() => {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if ("folder_id" in updates) { fields.push("folder_id = ?"); values.push(updates.folder_id ?? null); }
+    if ("owner" in updates) { fields.push("owner = ?"); values.push(updates.owner ?? null); }
+    if ("legal" in updates) { fields.push("legal = ?"); values.push(updates.legal); }
+
+    let updated = 0;
+    if (fields.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      const result = db.prepare(`UPDATE collection_cards SET ${fields.join(", ")} WHERE id IN (${placeholders})`).run(...values, ...ids);
+      updated = result.changes;
+    }
+
+    let deck_added = 0;
+    let deck_skipped = 0;
+    if (updates.deck_id !== undefined) {
+      const deck_id = updates.deck_id;
+      const placeholders = ids.map(() => "?").join(",");
+      const cards = db.prepare(`SELECT scryfall_id FROM collection_cards WHERE id IN (${placeholders})`).all(...ids) as { scryfall_id: string }[];
+      const insertStmt = db.prepare("INSERT OR IGNORE INTO deck_cards (deck_id, scryfall_id, quantity) VALUES (?, ?, 1)");
+      for (const card of cards) {
+        const existing = db.prepare("SELECT deck_id FROM deck_cards WHERE scryfall_id = ?").get(card.scryfall_id) as { deck_id: number } | undefined;
+        if (existing) {
+          deck_skipped++;
+        } else {
+          insertStmt.run(deck_id, card.scryfall_id);
+          deck_added++;
+        }
+      }
+    }
+
+    return { updated, deck_added, deck_skipped };
+  })();
+}
+
+// ── Users & Config ──────────────────────────────────────────────────────────────
+
+export interface User {
+  id: number;
+  username: string;
+  password_hash: string | null;
+  created_at: number;
+}
+
+export function getUserByUsername(username: string): User | null {
+  return db.prepare("SELECT * FROM users WHERE username = ?").get(username) as User | null;
+}
+
+export function setUserPassword(username: string, passwordHash: string): void {
+  db.prepare("UPDATE users SET password_hash = ? WHERE username = ?").run(passwordHash, username);
+}
+
+export function getAppConfig(key: string): string | null {
+  const row = db.prepare("SELECT value FROM app_config WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setAppConfig(key: string, value: string): void {
+  db.prepare("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)").run(key, value);
+}
 
 export function getUnassignedCards(colorIdentity?: string[]): CollectionRow[] {
   const assignedIds = db.prepare(

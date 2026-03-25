@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3 } from "lucide-react";
+import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { getCollection, getFolders, deleteCollectionCard, updateCollectionCard } from "../api/client";
+import { getCollection, getFolders, getDecks, deleteCollectionCard, updateCollectionCard, bulkUpdateCards } from "../api/client";
 import type { CollectionCard, Condition } from "../types";
 import { CONDITION_LABELS, RARITY_COLORS } from "../types";
 import AddCardModal from "../components/AddCardModal";
@@ -30,10 +30,16 @@ export default function Collection() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aggregate, setAggregate] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByKey[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkOwner, setBulkOwner] = useState("");
+  const [bulkFolder, setBulkFolder] = useState("");
+  const [bulkLegal, setBulkLegal] = useState("");
+  const [bulkDeck, setBulkDeck] = useState("");
 
   const queryClient = useQueryClient();
 
   const { data: folders } = useQuery({ queryKey: ["folders"], queryFn: getFolders });
+  const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
 
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal }],
@@ -68,6 +74,55 @@ export default function Collection() {
       setEditingId(null);
     },
   });
+
+  const bulkMutation = useMutation({
+    mutationFn: ({ ids, updates }: { ids: number[]; updates: Parameters<typeof bulkUpdateCards>[1] }) =>
+      bulkUpdateCards(ids, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["collection"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["decks"] });
+      clearBulkSelection();
+    },
+  });
+
+  function clearBulkSelection() {
+    setSelectedIds(new Set());
+    setBulkOwner("");
+    setBulkFolder("");
+    setBulkLegal("");
+    setBulkDeck("");
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === displayCards.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayCards.map((c) => c.id)));
+    }
+  }
+
+  function applyBulk() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const updates: Parameters<typeof bulkUpdateCards>[1] = {};
+    if (bulkOwner !== "") updates.owner = bulkOwner || null;
+    if (bulkFolder !== "") {
+      updates.folder_id = bulkFolder === "null" ? null : parseInt(bulkFolder);
+    }
+    if (bulkLegal !== "") updates.legal = bulkLegal;
+    if (bulkDeck !== "") updates.deck_id = parseInt(bulkDeck);
+    if (Object.keys(updates).length === 0) return;
+    bulkMutation.mutate({ ids, updates });
+  }
 
   // Build display rows: individual (expand by qty) or aggregate
   const displayCards = useMemo(() => {
@@ -263,6 +318,14 @@ export default function Collection() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700/50 sticky top-0 bg-surface">
+                <th className="py-3 px-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={displayCards.length > 0 && selectedIds.size === displayCards.length}
+                    onChange={toggleSelectAll}
+                    className="w-3.5 h-3.5 rounded accent-amber-500 cursor-pointer"
+                  />
+                </th>
                 <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider w-8"></th>
                 <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Name</th>
                 <th className="text-left py-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Mana</th>
@@ -287,6 +350,8 @@ export default function Collection() {
                   card={card}
                   aggregate={aggregate}
                   editing={editingId === card.id && aggregate}
+                  selected={selectedIds.has(card.id)}
+                  onToggleSelect={() => toggleSelect(card.id)}
                   onEdit={() => setEditingId(card.id)}
                   onCancelEdit={() => setEditingId(null)}
                   onDelete={() => deleteMutation.mutate(card.id)}
@@ -301,14 +366,66 @@ export default function Collection() {
 
       {showAdd && <AddCardModal onClose={() => setShowAdd(false)} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-3 bg-gray-900 border border-amber-500/30 rounded-xl shadow-2xl">
+          <div className="flex items-center gap-1.5 text-amber-400 text-sm font-medium shrink-0">
+            <CheckSquare className="w-4 h-4" />
+            {selectedIds.size} selected
+          </div>
+          <div className="w-px h-5 bg-gray-700" />
+
+          {/* Owner */}
+          <select value={bulkOwner} onChange={(e) => setBulkOwner(e.target.value)} className="select text-xs py-1.5 w-28">
+            <option value="">Owner…</option>
+            <option value="">— Clear —</option>
+            <option value="Jeffrey">Jeffrey</option>
+            <option value="Abby">Abby</option>
+          </select>
+
+          {/* Folder */}
+          <select value={bulkFolder} onChange={(e) => setBulkFolder(e.target.value)} className="select text-xs py-1.5 w-32">
+            <option value="">Folder…</option>
+            <option value="null">— Remove —</option>
+            {folders?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+
+          {/* Legal */}
+          <select value={bulkLegal} onChange={(e) => setBulkLegal(e.target.value)} className="select text-xs py-1.5 w-24">
+            <option value="">Legal…</option>
+            <option value="Y">Y — Legal</option>
+            <option value="N">N — Not Legal</option>
+          </select>
+
+          {/* Deck */}
+          <select value={bulkDeck} onChange={(e) => setBulkDeck(e.target.value)} className="select text-xs py-1.5 w-32">
+            <option value="">Add to deck…</option>
+            {decks?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+
+          <button
+            onClick={applyBulk}
+            disabled={bulkMutation.isPending || (!bulkOwner && !bulkFolder && !bulkLegal && !bulkDeck)}
+            className="btn-primary text-xs py-1.5 px-3 shrink-0"
+          >
+            {bulkMutation.isPending ? "Applying…" : "Apply"}
+          </button>
+          <button onClick={clearBulkSelection} className="p-1 text-gray-500 hover:text-gray-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function CollectionRow({ card, aggregate, editing, onEdit, onCancelEdit, onDelete, onUpdate, folders }: {
+function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onEdit, onCancelEdit, onDelete, onUpdate, folders }: {
   card: CollectionCard;
   aggregate: boolean;
   editing: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onEdit: () => void;
   onCancelEdit: () => void;
   onDelete: () => void;
@@ -326,7 +443,17 @@ function CollectionRow({ card, aggregate, editing, onEdit, onCancelEdit, onDelet
     : parseFloat(card.prices?.usd || "0");
 
   return (
-    <tr className="border-b border-gray-700/20 hover:bg-gray-800/30 transition-colors group">
+    <tr className={`border-b border-gray-700/20 hover:bg-gray-800/30 transition-colors group ${selected ? "bg-amber-500/5" : ""}`}>
+      {/* Checkbox */}
+      <td className="py-2 px-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          onClick={(e) => e.stopPropagation()}
+          className="w-3.5 h-3.5 rounded accent-amber-500 cursor-pointer"
+        />
+      </td>
       {/* Hover image */}
       <td className="py-2 px-4">
         <HoverCardImage card={card}>
