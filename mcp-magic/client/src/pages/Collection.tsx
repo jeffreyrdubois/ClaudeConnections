@@ -490,7 +490,7 @@ export default function Collection() {
           <div className="flex flex-wrap gap-2 items-center">
             <div className="flex items-center gap-1.5 text-amber-400 text-sm font-medium">
               <CheckSquare className="w-4 h-4" />
-              {selectedIds.size} selected
+              {selectedIds.size}<span className="hidden sm:inline"> selected</span>
             </div>
             <div className="hidden md:block w-px h-5 bg-gray-700" />
 
