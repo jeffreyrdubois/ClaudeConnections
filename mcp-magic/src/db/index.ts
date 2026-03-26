@@ -114,6 +114,7 @@ try { db.exec("ALTER TABLE decks ADD COLUMN owner TEXT"); } catch { /* already e
 // Drop the over-restrictive unique index that prevented the same card from being in multiple decks.
 // The correct constraint is UNIQUE(deck_id, scryfall_id) which already exists in the table DDL.
 try { db.exec("DROP INDEX IF EXISTS idx_deck_cards_scryfall"); } catch { /* ignore */ }
+try { db.exec("ALTER TABLE deck_cards ADD COLUMN foil INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 // Seed default users
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Jeffrey"); } catch { /* already exists */ }
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Abby"); } catch { /* already exists */ }
@@ -186,6 +187,7 @@ export interface DeckCard {
   deck_id: number;
   scryfall_id: string;
   quantity: number;
+  foil: boolean;
   is_commander: boolean;
   category: string | null;
 }
@@ -331,9 +333,9 @@ const COLLECTION_SELECT = `
     sc.card_faces, sc.rarity, sc.legalities, sc.produced_mana,
     sc.power, sc.toughness, sc.loyalty,
     f.name as folder_name,
-    (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id LIMIT 1) as deck_id,
-    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id) as deck_name,
-    (SELECT COALESCE(SUM(dkc2.quantity), 0) FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id) as assigned_qty
+    (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil LIMIT 1) as deck_id,
+    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil) as deck_name,
+    (SELECT COALESCE(SUM(dkc2.quantity), 0) FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil) as assigned_qty
   FROM collection_cards cc
   JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
   LEFT JOIN folders f ON f.id = cc.folder_id
@@ -420,17 +422,18 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
     );
   }
 
-  // deck_cards tracks quantity by scryfall_id only — no link to specific collection entries.
-  // Distribute the assigned_qty pool across entries (sorted by id) so only the first N
-  // entries show a deck assignment, where N covers the assigned copies.
-  const byScryfallId = new Map<string, CollectionRow[]>();
+  // deck_cards tracks quantity by (scryfall_id, foil) — no link to specific collection entries.
+  // Distribute the assigned_qty pool across entries with the same scryfall_id+foil (sorted by id)
+  // so only the first N entries show a deck assignment, where N covers the assigned copies.
+  const byScryfallFoil = new Map<string, CollectionRow[]>();
   for (const row of result) {
-    if (!byScryfallId.has(row.scryfall_id)) byScryfallId.set(row.scryfall_id, []);
-    byScryfallId.get(row.scryfall_id)!.push(row);
+    const key = `${row.scryfall_id}:${row.foil ? 1 : 0}`;
+    if (!byScryfallFoil.has(key)) byScryfallFoil.set(key, []);
+    byScryfallFoil.get(key)!.push(row);
   }
-  for (const entries of byScryfallId.values()) {
+  for (const entries of byScryfallFoil.values()) {
     if (entries.length <= 1) continue; // single entry: SQL value is already correct
-    const totalAssigned = entries[0].assigned_qty; // same for all rows with same scryfall_id
+    const totalAssigned = entries[0].assigned_qty; // same for all rows with same scryfall_id+foil
     let remaining = totalAssigned;
     for (const entry of entries) {
       if (remaining <= 0) {
@@ -654,15 +657,20 @@ export function getTotalCollectionValue(filterOrFolderId?: number | null | Stats
   return result.total ?? 0;
 }
 
-// Returns collection cards that still have at least one copy not yet assigned to any deck
+// Returns collection cards that still have at least one copy not yet assigned to any deck.
+// Foil and non-foil are tracked separately so only the specific printing that's fully
+// assigned is hidden.
 export function searchCollectionForDeck(query: string): CollectionRow[] {
   const assigned = db.prepare(
-    "SELECT scryfall_id, SUM(quantity) as total FROM deck_cards GROUP BY scryfall_id"
-  ).all() as { scryfall_id: string; total: number }[];
-  const assignedMap = new Map(assigned.map((r) => [r.scryfall_id, r.total]));
+    "SELECT scryfall_id, foil, SUM(quantity) as total FROM deck_cards GROUP BY scryfall_id, foil"
+  ).all() as { scryfall_id: string; foil: number; total: number }[];
+  const assignedMap = new Map(assigned.map((r) => [`${r.scryfall_id}:${r.foil}`, r.total]));
 
   const cards = getCollection({ search: query });
-  return cards.filter((c) => c.quantity > (assignedMap.get(c.scryfall_id) ?? 0));
+  return cards.filter((c) => {
+    const key = `${c.scryfall_id}:${c.foil ? 1 : 0}`;
+    return c.quantity > (assignedMap.get(key) ?? 0);
+  });
 }
 
 export function getCardQuantityInCollection(cardName: string): { total: number; entries: CollectionRow[] } {
@@ -823,12 +831,13 @@ export function addCardToDeck(data: {
   deck_id: number;
   scryfall_id: string;
   quantity: number;
+  foil?: boolean;
   is_commander: boolean;
   category?: string;
 }): DeckCard {
   return db.prepare(`
-    INSERT INTO deck_cards (deck_id, scryfall_id, quantity, is_commander, category)
-    VALUES (@deck_id, @scryfall_id, @quantity, @is_commander, @category)
+    INSERT INTO deck_cards (deck_id, scryfall_id, quantity, foil, is_commander, category)
+    VALUES (@deck_id, @scryfall_id, @quantity, @foil, @is_commander, @category)
     ON CONFLICT(deck_id, scryfall_id) DO UPDATE SET
       quantity = excluded.quantity,
       is_commander = excluded.is_commander,
@@ -837,6 +846,7 @@ export function addCardToDeck(data: {
     RETURNING *
   `).get({
     ...data,
+    foil: data.foil ? 1 : 0,
     is_commander: data.is_commander ? 1 : 0,
     category: data.category ?? null,
   }) as DeckCard;

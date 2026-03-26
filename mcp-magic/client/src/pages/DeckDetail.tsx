@@ -80,8 +80,8 @@ export default function DeckDetail() {
   });
 
   const addMutation = useMutation({
-    mutationFn: ({ scryfallId, category }: { scryfallId: string; category: string }) =>
-      addCardToDeck(deckId, { scryfall_id: scryfallId, category }),
+    mutationFn: ({ scryfallId, category, foil }: { scryfallId: string; category: string; foil?: boolean }) =>
+      addCardToDeck(deckId, { scryfall_id: scryfallId, category, foil }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
@@ -332,7 +332,7 @@ export default function DeckDetail() {
                 <CollectionCardSearch
                   autoFocus
                   onSelect={(card: CollectionCard) => {
-                    addMutation.mutate({ scryfallId: card.scryfall_id, category: addCategory });
+                    addMutation.mutate({ scryfallId: card.scryfall_id, category: addCategory, foil: card.foil });
                     setShowAddCard(false);
                   }}
                   placeholder="Search your collection..."
@@ -469,7 +469,7 @@ export default function DeckDetail() {
                           showQty={aggregate}
                           onRemove={() => removeMutation.mutate(dc.scryfall_id)}
                           onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
-                          onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other" })}
+                          onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other", foil: dc.foil })}
                           canAdd={cardCount < 100}
                         />
                       ))}
@@ -484,7 +484,7 @@ export default function DeckDetail() {
                         dc={dc}
                         onRemove={() => removeMutation.mutate(dc.scryfall_id)}
                         onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
-                        onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other" })}
+                        onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other", foil: dc.foil })}
                         canAdd={cardCount < 100}
                       />
                     ))}
