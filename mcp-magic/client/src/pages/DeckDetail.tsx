@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Crown, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Crown, ChevronDown, ChevronUp, BarChart3, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck, setCardAsCommander } from "../api/client";
+import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck, setCardAsCommander, updateDeck } from "../api/client";
 import type { CollectionCard, DeckCard } from "../types";
 import { RARITY_COLORS } from "../types";
 import CollectionCardSearch from "../components/CollectionCardSearch";
@@ -62,6 +62,7 @@ export default function DeckDetail() {
   const [filterCategory, setFilterCategory] = useState("All");
   const [showStats, setShowStats] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
+  const [editingOwner, setEditingOwner] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: deck, isLoading: deckLoading } = useQuery({
@@ -98,6 +99,15 @@ export default function DeckDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
+    },
+  });
+
+  const ownerMutation = useMutation({
+    mutationFn: (owner: string | null) => updateDeck(deckId, { owner }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
+      queryClient.invalidateQueries({ queryKey: ["decks"] });
+      setEditingOwner(false);
     },
   });
 
@@ -153,7 +163,36 @@ export default function DeckDetail() {
           )}
 
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold text-white leading-tight">{deck.name}</h1>
+            <div className="flex items-start gap-2">
+              <h1 className="text-xl md:text-2xl font-bold text-white leading-tight flex-1">{deck.name}</h1>
+              {/* Owner badge / edit */}
+              {editingOwner ? (
+                <select
+                  autoFocus
+                  defaultValue={deck.owner || ""}
+                  onChange={(e) => ownerMutation.mutate(e.target.value || null)}
+                  onBlur={() => setEditingOwner(false)}
+                  className="select text-xs py-1 w-28 shrink-0"
+                >
+                  <option value="">No owner</option>
+                  <option value="Jeffrey">Jeffrey</option>
+                  <option value="Abby">Abby</option>
+                </select>
+              ) : (
+                <button
+                  onClick={() => setEditingOwner(true)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 shrink-0 mt-0.5"
+                  title="Set deck owner"
+                >
+                  {deck.owner ? (
+                    <span className="px-2 py-0.5 bg-gray-700/60 rounded-full">{deck.owner}</span>
+                  ) : (
+                    <span className="px-2 py-0.5 border border-dashed border-gray-700 rounded-full text-gray-600 hover:border-gray-500">owner?</span>
+                  )}
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
             {deck.commander_name ? (
               <div className="text-gray-400 text-sm mt-0.5 leading-snug">
                 {deck.commander_name}

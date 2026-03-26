@@ -91,7 +91,7 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
 
       {/* Dropdown */}
       {open && (results.length > 0 || loading) && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-gray-700 rounded-xl shadow-2xl overflow-y-auto max-h-72">
           {loading && (
             <div className="p-3 text-center text-gray-400 text-sm">Searching...</div>
           )}

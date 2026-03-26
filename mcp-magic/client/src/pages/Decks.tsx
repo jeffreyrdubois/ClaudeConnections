@@ -35,8 +35,8 @@ export default function Decks() {
 
       {showCreate && (
         <CreateDeckForm
-          onSave={async (name, description) => {
-            await createDeck({ name, description: description || undefined });
+          onSave={async (name, description, owner) => {
+            await createDeck({ name, description: description || undefined, owner: owner || undefined });
             queryClient.invalidateQueries({ queryKey: ["decks"] });
             setShowCreate(false);
           }}
@@ -129,7 +129,12 @@ function DeckCard({ deck, onClick, onDelete }: {
         )}
 
         <div className="flex items-center justify-between">
-          <ColorIdentity identity={colorIdentity} size="sm" />
+          <div className="flex items-center gap-2">
+            <ColorIdentity identity={colorIdentity} size="sm" />
+            {deck.owner && (
+              <span className="text-xs text-gray-500 font-medium">{deck.owner}</span>
+            )}
+          </div>
           <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-amber-400 transition-colors" />
         </div>
 
@@ -141,12 +146,15 @@ function DeckCard({ deck, onClick, onDelete }: {
   );
 }
 
+const OWNERS = ["Jeffrey", "Abby"];
+
 function CreateDeckForm({ onSave, onCancel }: {
-  onSave: (name: string, description: string) => Promise<void>;
+  onSave: (name: string, description: string, owner: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [owner, setOwner] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,7 +163,7 @@ function CreateDeckForm({ onSave, onCancel }: {
     setSaving(true);
     setError(null);
     try {
-      await onSave(name.trim(), description.trim());
+      await onSave(name.trim(), description.trim(), owner);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create deck");
       setSaving(false);
@@ -175,13 +183,19 @@ function CreateDeckForm({ onSave, onCancel }: {
           className="input"
           autoFocus
         />
-        <input
-          type="text"
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="input"
-        />
+        <div className="flex gap-3">
+          <select value={owner} onChange={(e) => setOwner(e.target.value)} className="select flex-1">
+            <option value="">Owner (optional)</option>
+            {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input flex-1"
+          />
+        </div>
         {error && <div className="text-sm text-red-400">{error}</div>}
         <div className="flex gap-2 justify-end">
           <button onClick={onCancel} className="btn-secondary text-sm">Cancel</button>
