@@ -1037,6 +1037,24 @@ export function setAppConfig(key: string, value: string): void {
   db.prepare("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)").run(key, value);
 }
 
+export function getOwnershipForNames(names: string[]): Map<string, { total: number; unassigned: number }> {
+  if (names.length === 0) return new Map();
+  const lower = names.map((n) => n.toLowerCase());
+  const placeholders = lower.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT
+      LOWER(sc.name) as card_name,
+      SUM(cc.quantity) as total_quantity,
+      SUM(CASE WHEN dkc.scryfall_id IS NULL THEN cc.quantity ELSE 0 END) as unassigned_quantity
+    FROM collection_cards cc
+    JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
+    LEFT JOIN deck_cards dkc ON dkc.scryfall_id = cc.scryfall_id
+    WHERE LOWER(sc.name) IN (${placeholders})
+    GROUP BY LOWER(sc.name)
+  `).all(...lower) as { card_name: string; total_quantity: number; unassigned_quantity: number }[];
+  return new Map(rows.map((r) => [r.card_name, { total: r.total_quantity, unassigned: r.unassigned_quantity }]));
+}
+
 export function getUnassignedCards(colorIdentity?: string[]): CollectionRow[] {
   const assignedIds = db.prepare(
     "SELECT DISTINCT scryfall_id FROM deck_cards"

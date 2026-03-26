@@ -173,6 +173,15 @@ export function setCardAsCommander(deckId: number, scryfallId: string, isCommand
 
 // ── Scryfall ───────────────────────────────────────────────────────────────────
 
+export interface ShopCard extends ScryfallCard {
+  owned_copies: number;
+  unassigned_copies: number;
+}
+
+export function shopSearch(query: string): Promise<{ cards: ShopCard[]; total_cards: number; has_more: boolean }> {
+  return request(`/scryfall/shop?q=${encodeURIComponent(query)}`);
+}
+
 export function searchScryfall(query: string, page = 1, set?: string): Promise<SearchResult> {
   const q = set ? `${query} set:${set}` : query;
   return request<SearchResult>(`/scryfall/search?q=${encodeURIComponent(q)}&page=${page}`);
