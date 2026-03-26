@@ -193,6 +193,18 @@ collectionRouter.patch("/:id", (req, res) => {
   }
 });
 
+// Helper: check whether deleting a collection entry (removing `qty` copies) would leave
+// fewer owned than are assigned to decks across all deck_cards for that scryfall_id.
+function wouldOrphanDeckCards(scryfallId: string, removingQty: number): boolean {
+  const { total: owned } = db.prepare(
+    "SELECT COALESCE(SUM(quantity), 0) as total FROM collection_cards WHERE scryfall_id = ?"
+  ).get(scryfallId) as { total: number };
+  const { total: assigned } = db.prepare(
+    "SELECT COALESCE(SUM(quantity), 0) as total FROM deck_cards WHERE scryfall_id = ?"
+  ).get(scryfallId) as { total: number };
+  return (owned - removingQty) < assigned;
+}
+
 // DELETE /api/collection/bulk  ← must be before /:id
 collectionRouter.delete("/bulk", (req, res) => {
   const { ids } = req.body as { ids?: number[] };
@@ -200,13 +212,11 @@ collectionRouter.delete("/bulk", (req, res) => {
     res.status(400).json({ error: "ids array required" });
     return;
   }
-  // Check none are assigned to a deck
   for (const id of ids) {
     const card = getCollectionCardById(id);
     if (!card) continue;
-    const inDeck = db.prepare("SELECT 1 FROM deck_cards WHERE scryfall_id = ? LIMIT 1").get(card.scryfall_id);
-    if (inDeck) {
-      res.status(400).json({ error: `"${card.name}" is assigned to a deck. Remove it from the deck first.` });
+    if (wouldOrphanDeckCards(card.scryfall_id, card.quantity)) {
+      res.status(400).json({ error: `"${card.name}" is needed by a deck. Remove it from the deck first.` });
       return;
     }
   }
@@ -225,10 +235,8 @@ collectionRouter.delete("/:id", (req, res) => {
     res.status(404).json({ error: "Collection entry not found" });
     return;
   }
-  // Block if any copies are assigned to a deck
-  const inDeck = db.prepare("SELECT 1 FROM deck_cards WHERE scryfall_id = ? LIMIT 1").get(card.scryfall_id);
-  if (inDeck) {
-    res.status(400).json({ error: `"${card.name}" is assigned to a deck. Remove it from the deck first.` });
+  if (wouldOrphanDeckCards(card.scryfall_id, card.quantity)) {
+    res.status(400).json({ error: `"${card.name}" is needed by a deck. Remove it from the deck first.` });
     return;
   }
   deleteCollectionCard(id);

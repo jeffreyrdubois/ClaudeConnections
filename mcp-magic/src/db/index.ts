@@ -420,6 +420,30 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
     );
   }
 
+  // deck_cards tracks quantity by scryfall_id only — no link to specific collection entries.
+  // Distribute the assigned_qty pool across entries (sorted by id) so only the first N
+  // entries show a deck assignment, where N covers the assigned copies.
+  const byScryfallId = new Map<string, CollectionRow[]>();
+  for (const row of result) {
+    if (!byScryfallId.has(row.scryfall_id)) byScryfallId.set(row.scryfall_id, []);
+    byScryfallId.get(row.scryfall_id)!.push(row);
+  }
+  for (const entries of byScryfallId.values()) {
+    if (entries.length <= 1) continue; // single entry: SQL value is already correct
+    const totalAssigned = entries[0].assigned_qty; // same for all rows with same scryfall_id
+    let remaining = totalAssigned;
+    for (const entry of entries) {
+      if (remaining <= 0) {
+        entry.deck_name = null;
+        entry.deck_id = null;
+        entry.assigned_qty = 0;
+      } else {
+        entry.assigned_qty = Math.min(entry.quantity, remaining);
+        remaining -= entry.quantity;
+      }
+    }
+  }
+
   return result;
 }
 
