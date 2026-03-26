@@ -469,6 +469,8 @@ export default function DeckDetail() {
                           showQty={aggregate}
                           onRemove={() => removeMutation.mutate(dc.scryfall_id)}
                           onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
+                          onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other" })}
+                          canAdd={cardCount < 100}
                         />
                       ))}
                   </tbody>
@@ -482,6 +484,8 @@ export default function DeckDetail() {
                         dc={dc}
                         onRemove={() => removeMutation.mutate(dc.scryfall_id)}
                         onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
+                        onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other" })}
+                        canAdd={cardCount < 100}
                       />
                     ))}
                 </ul>
@@ -518,10 +522,12 @@ export default function DeckDetail() {
   );
 }
 
-function CardRow({ dc, onRemove, onSetCommander, isCommander = false, showQty = false }: {
+function CardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, isCommander = false, showQty = false }: {
   dc: DeckCard;
   onRemove: () => void;
   onSetCommander: () => void;
+  onIncrement?: () => void;
+  canAdd?: boolean;
   isCommander?: boolean;
   showQty?: boolean;
 }) {
@@ -557,6 +563,15 @@ function CardRow({ dc, onRemove, onSetCommander, isCommander = false, showQty = 
       <td className="py-2 px-4 text-right text-xs text-amber-400">${price.toFixed(2)}</td>
       <td className="py-2 px-4">
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!isCommander && canAdd && (
+            <button
+              onClick={onIncrement}
+              title="Add one more copy"
+              className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-green-400 text-xs font-bold"
+            >
+              +1
+            </button>
+          )}
           {/* Set/unset commander */}
           <button
             onClick={onSetCommander}
@@ -577,10 +592,12 @@ function CardRow({ dc, onRemove, onSetCommander, isCommander = false, showQty = 
   );
 }
 
-function MobileDeckCardRow({ dc, onRemove, onSetCommander, isCommander = false }: {
+function MobileDeckCardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, isCommander = false }: {
   dc: DeckCard;
   onRemove: () => void;
   onSetCommander: () => void;
+  onIncrement?: () => void;
+  canAdd?: boolean;
   isCommander?: boolean;
 }) {
   const price = parseFloat(dc.card.prices?.usd || "0");
@@ -605,6 +622,7 @@ function MobileDeckCardRow({ dc, onRemove, onSetCommander, isCommander = false }
           <span className="text-amber-400 text-xs font-medium shrink-0">${price.toFixed(2)}</span>
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {dc.quantity > 1 && <span className="text-xs text-gray-500">×{dc.quantity}</span>}
           <ManaCost cost={dc.card.mana_cost} size="sm" />
           <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
             isCommander
@@ -618,6 +636,15 @@ function MobileDeckCardRow({ dc, onRemove, onSetCommander, isCommander = false }
 
       {/* Actions */}
       <div className="flex items-center gap-0.5 shrink-0">
+        {!isCommander && canAdd && (
+          <button
+            onClick={onIncrement}
+            title="Add one more copy"
+            className="p-2 rounded-md text-gray-600 hover:text-green-400 text-xs font-bold"
+          >
+            +1
+          </button>
+        )}
         <button
           onClick={onSetCommander}
           title={isCommander ? "Remove as commander" : "Set as commander"}
