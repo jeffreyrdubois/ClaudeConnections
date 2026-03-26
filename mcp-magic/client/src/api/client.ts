@@ -163,6 +163,7 @@ export function addCardToDeck(deckId: number, data: {
   scryfall_id?: string;
   quantity?: number;
   foil?: boolean;
+  collection_card_id?: number;
   is_commander?: boolean;
   category?: string;
 }): Promise<unknown> {
