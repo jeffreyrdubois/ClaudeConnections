@@ -44,8 +44,8 @@ export default function Collection() {
   const [sortCol, setSortCol] = useState<SortCol>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  // Bulk edit state
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Bulk edit state — keyed by row key "cardId-rowIdx" so each displayed row is independently selectable
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOwner, setBulkOwner] = useState("");
   const [bulkFolder, setBulkFolder] = useState("");
   const [bulkDeck, setBulkDeck] = useState("");
@@ -136,13 +136,15 @@ export default function Collection() {
     }
   }
 
+  // Extract unique card.ids (numbers) from the set of selected row keys ("cardId-rowIdx")
+  function uniqueSelectedCardIds(): number[] {
+    return [...new Set([...selectedIds].map((k) => parseInt(k.split("-")[0])))];
+  }
+
   function handleBulkDelete() {
-    const ids = [...selectedIds];
+    const ids = uniqueSelectedCardIds();
     if (ids.length === 0) return;
-    const inDeck = ids.some((id) => {
-      const c = cards.find((x) => x.id === id);
-      return c?.deck_name;
-    });
+    const inDeck = ids.some((id) => cards.find((x) => x.id === id)?.deck_name);
     if (inDeck) {
       alert("One or more selected cards are assigned to a deck. Remove them from their deck first.");
       return;
@@ -151,26 +153,26 @@ export default function Collection() {
     bulkDeleteMutation.mutate(ids);
   }
 
-  function toggleSelect(id: number) {
+  function toggleSelect(rowKey: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey);
       return next;
     });
   }
 
   function toggleSelectAll() {
-    const allIds = new Set(displayCards.map((c) => c.id));
-    const allSelected = allIds.size > 0 && [...allIds].every((id) => selectedIds.has(id));
+    const allKeys = displayCards.map((c, idx) => `${c.id}-${idx}`);
+    const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedIds.has(k));
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(allIds);
+      setSelectedIds(new Set(allKeys));
     }
   }
 
   function applyBulk() {
-    const ids = [...selectedIds];
+    const ids = uniqueSelectedCardIds();
     if (ids.length === 0) return;
     const updates: Parameters<typeof bulkUpdateCards>[1] = {};
     if (bulkOwner !== "") updates.owner = bulkOwner.trim() || null;
@@ -237,10 +239,6 @@ export default function Collection() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [cards, aggregate, groupBy, sortCol, sortDir]);
-
-  // Unique entry IDs in the current view — individual mode repeats rows for qty > 1,
-  // so we deduplicate before driving the "select all" checkbox state.
-  const displayEntryIds = useMemo(() => new Set(displayCards.map((c) => c.id)), [displayCards]);
 
   const totalValue = cards.reduce((sum, c) => sum + cardPrice(c) * c.quantity, 0);
   const totalQty = cards.reduce((s, c) => s + c.quantity, 0);
@@ -468,7 +466,7 @@ export default function Collection() {
                   <th className="py-3 px-3 w-8">
                     <input
                       type="checkbox"
-                      checked={displayEntryIds.size > 0 && [...displayEntryIds].every((id) => selectedIds.has(id))}
+                      checked={displayCards.length > 0 && displayCards.every((c, i) => selectedIds.has(`${c.id}-${i}`))}
                       onChange={toggleSelectAll}
                       className="w-3.5 h-3.5 rounded accent-amber-500 cursor-pointer"
                     />
@@ -498,8 +496,8 @@ export default function Collection() {
                     card={card}
                     aggregate={aggregate}
                     editing={editingId === card.id}
-                    selected={selectedIds.has(card.id)}
-                    onToggleSelect={() => toggleSelect(card.id)}
+                    selected={selectedIds.has(`${card.id}-${idx}`)}
+                    onToggleSelect={() => toggleSelect(`${card.id}-${idx}`)}
                     onEdit={() => setEditingId(card.id)}
                     onCancelEdit={() => setEditingId(null)}
                     onDelete={() => handleDelete(card)}
@@ -517,8 +515,8 @@ export default function Collection() {
                   key={`${card.id}-${idx}`}
                   card={card}
                   aggregate={aggregate}
-                  selected={selectedIds.has(card.id)}
-                  onToggleSelect={() => toggleSelect(card.id)}
+                  selected={selectedIds.has(`${card.id}-${idx}`)}
+                  onToggleSelect={() => toggleSelect(`${card.id}-${idx}`)}
                   onDelete={() => handleDelete(card)}
                   folders={folders || []}
                   decks={decks || []}
