@@ -621,13 +621,6 @@ function MobileDeckCardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd =
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {dc.quantity > 1 && <span className="text-xs text-gray-500">×{dc.quantity}</span>}
           <ManaCost cost={dc.card.mana_cost} size="sm" />
-          <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
-            isCommander
-              ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
-              : "bg-gray-700/50 text-gray-400 border-gray-700"
-          }`}>
-            {dc.category || "Other"}
-          </span>
         </div>
       </div>
 
