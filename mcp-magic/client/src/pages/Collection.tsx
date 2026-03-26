@@ -36,6 +36,7 @@ export default function Collection() {
   const [filterOwner, setFilterOwner] = useState("");
   const [filterLegal, setFilterLegal] = useState("");
   const [filterSet, setFilterSet] = useState("");
+  const [filterDeck, setFilterDeck] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aggregate, setAggregate] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -55,7 +56,7 @@ export default function Collection() {
   const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
 
   const { data: cards = [], isLoading } = useQuery({
-    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal, filterSet }],
+    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal, filterSet, filterDeck }],
     queryFn: () =>
       getCollection({
         search: search || undefined,
@@ -66,6 +67,7 @@ export default function Collection() {
         owner: filterOwner || undefined,
         legal: filterLegal || undefined,
         set_code: filterSet || undefined,
+        deck_id: filterDeck || undefined,
       }),
     staleTime: 30000,
   });
@@ -290,7 +292,7 @@ export default function Collection() {
             <button
               onClick={() => setShowFilters((v) => !v)}
               className={`md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                showFilters || filterColors.length || filterFolder || filterType || filterCondition || filterOwner || filterLegal || filterSet || search
+                showFilters || filterColors.length || filterFolder || filterType || filterCondition || filterOwner || filterLegal || filterSet || filterDeck || search
                   ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                   : "bg-gray-800 text-gray-400 border-gray-700"
               }`}
@@ -411,6 +413,12 @@ export default function Collection() {
                 className="input w-20 text-sm"
               />
             </div>
+
+            <select value={filterDeck} onChange={(e) => setFilterDeck(e.target.value)} className="select w-full md:w-44">
+              <option value="">All Decks</option>
+              <option value="none">Not in any deck</option>
+              {decks?.map((d) => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
+            </select>
 
             {/* Color filters */}
             <div className="flex gap-1.5">

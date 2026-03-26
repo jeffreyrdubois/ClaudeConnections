@@ -30,6 +30,7 @@ export interface CollectionFilter {
   owner?: string;
   legal?: string;
   set_code?: string;
+  deck_id?: number | "none" | string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): Promise<CollectionCard[]> {
@@ -42,6 +43,7 @@ export function getCollection(filter: CollectionFilter = {}): Promise<Collection
   if (filter.condition) params.set("condition", filter.condition);
   if (filter.owner) params.set("owner", filter.owner);
   if (filter.legal) params.set("legal", filter.legal);
+  if (filter.deck_id !== undefined) params.set("deck_id", String(filter.deck_id));
   if (filter.set_code) params.set("set_code", filter.set_code);
   return request<CollectionCard[]>(`/collection?${params}`);
 }
