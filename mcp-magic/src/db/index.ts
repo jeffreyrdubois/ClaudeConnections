@@ -319,6 +319,7 @@ export interface CollectionRow extends CollectionCard {
   toughness: string | null;
   deck_id: number | null;
   deck_name: string | null;
+  assigned_qty: number;
 }
 
 const COLLECTION_SELECT = `
@@ -331,7 +332,8 @@ const COLLECTION_SELECT = `
     sc.power, sc.toughness, sc.loyalty,
     f.name as folder_name,
     (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id LIMIT 1) as deck_id,
-    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id) as deck_name
+    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id) as deck_name,
+    (SELECT COALESCE(SUM(dkc2.quantity), 0) FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id) as assigned_qty
   FROM collection_cards cc
   JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
   LEFT JOIN folders f ON f.id = cc.folder_id
