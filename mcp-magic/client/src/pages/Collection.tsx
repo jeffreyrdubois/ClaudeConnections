@@ -217,8 +217,15 @@ export default function Collection() {
         base = [...groups.values()];
       }
     } else {
+      // In individual mode, only the first `assigned_qty` copies are actually assigned to a deck.
+      // Clear deck_name/deck_id for the remaining rows so they aren't shown as in-use.
       base = cards.flatMap((card) =>
-        Array.from({ length: card.quantity }, () => ({ ...card, quantity: 1 }))
+        Array.from({ length: card.quantity }, (_, i) => ({
+          ...card,
+          quantity: 1,
+          deck_name: i < card.assigned_qty ? card.deck_name : null,
+          deck_id: i < card.assigned_qty ? card.deck_id : null,
+        }))
       );
     }
 
