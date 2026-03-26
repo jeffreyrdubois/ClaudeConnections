@@ -69,7 +69,7 @@ function CardModal({ card, onClose }: { card: CardLike; onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-      onClick={onClose}
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
     >
       {url ? (
         <img
