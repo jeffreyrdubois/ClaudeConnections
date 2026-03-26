@@ -189,6 +189,7 @@ decksRouter.post("/:id/cards", async (req, res) => {
     name?: string;
     scryfall_id?: string;
     quantity?: number;
+    foil?: boolean;
     is_commander?: boolean;
     category?: string;
   };
@@ -250,6 +251,7 @@ decksRouter.post("/:id/cards", async (req, res) => {
       deck_id,
       scryfall_id: scryfallId,
       quantity: newQty,
+      foil: body.foil ?? false,
       is_commander: body.is_commander ?? false,
       category: body.category,
     });

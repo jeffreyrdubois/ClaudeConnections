@@ -107,6 +107,7 @@ export interface DeckCard {
   deck_id: number;
   scryfall_id: string;
   quantity: number;
+  foil: boolean;
   is_commander: boolean;
   category: string | null;
   card: ScryfallCard;
