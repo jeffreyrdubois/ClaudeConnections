@@ -142,15 +142,42 @@ export default function Collection() {
   }
 
   function handleBulkDelete() {
-    const ids = uniqueSelectedCardIds();
-    if (ids.length === 0) return;
-    const inDeck = ids.some((id) => cards.find((x) => x.id === id)?.deck_name);
+    if (selectedIds.size === 0) return;
+    // Check the actual selected displayCards rows, not raw cards.
+    // In individual mode, deck_name is cleared for unassigned copies even when the underlying
+    // collection entry has some copies assigned to a deck.
+    const inDeck = [...selectedIds].some((key) => {
+      const rowIdx = parseInt(key.split("-")[1]);
+      return displayCards[rowIdx]?.deck_name;
+    });
     if (inDeck) {
       alert("One or more selected cards are assigned to a deck. Remove them from their deck first.");
       return;
     }
-    if (!confirm(`Delete ${ids.length} card entr${ids.length === 1 ? "y" : "ies"} from collection?`)) return;
-    bulkDeleteMutation.mutate(ids);
+    if (!aggregate) {
+      // Individual mode: each selected row = 1 copy. Count selected copies per card ID
+      // and decrement rather than delete when only some copies are being removed.
+      const selectedCounts = new Map<number, number>();
+      for (const key of selectedIds) {
+        const cardId = parseInt(key.split("-")[0]);
+        selectedCounts.set(cardId, (selectedCounts.get(cardId) ?? 0) + 1);
+      }
+      const toDelete: number[] = [];
+      const toDecrement: { id: number; newQty: number }[] = [];
+      for (const [cardId, selQty] of selectedCounts) {
+        const card = cards.find((c) => c.id === cardId);
+        if (!card) continue;
+        if (selQty >= card.quantity) toDelete.push(cardId);
+        else toDecrement.push({ id: cardId, newQty: card.quantity - selQty });
+      }
+      if (!confirm(`Remove ${selectedIds.size} cop${selectedIds.size === 1 ? "y" : "ies"} from collection?`)) return;
+      if (toDelete.length) bulkDeleteMutation.mutate(toDelete);
+      for (const { id, newQty } of toDecrement) updateMutation.mutate({ id, data: { quantity: newQty } });
+    } else {
+      const ids = uniqueSelectedCardIds();
+      if (!confirm(`Delete ${ids.length} card entr${ids.length === 1 ? "y" : "ies"} from collection?`)) return;
+      bulkDeleteMutation.mutate(ids);
+    }
   }
 
   function toggleSelect(rowKey: string) {
