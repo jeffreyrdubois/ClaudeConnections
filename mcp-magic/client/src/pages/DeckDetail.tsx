@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Crown, ChevronDown, ChevronUp, BarChart3, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Layers } from "lucide-react";
+import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Crown, ChevronDown, ChevronUp, BarChart3, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getDeck, getDeckStats, addCardToDeck, removeCardFromDeck, setCardAsCommander, updateDeck } from "../api/client";
@@ -59,11 +59,10 @@ export default function DeckDetail() {
   const deckId = parseInt(id!);
   const [showAddCard, setShowAddCard] = useState(false);
   const [addCategory, setAddCategory] = useState("Other");
-  const [filterCategory, setFilterCategory] = useState("All");
+  const [filterType, setFilterType] = useState("All");
   const [showStats, setShowStats] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
-  const [aggregate, setAggregate] = useState(false);
   const [sortCol, setSortCol] = useState<"name" | "cmc" | "type" | "category" | "price">("cmc");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const queryClient = useQueryClient();
@@ -131,35 +130,27 @@ export default function DeckDetail() {
   const commanderColors = deck.commander_colors || [];
   const deckType = getDeckColorType(commanderColors);
 
-  // Group cards by category
-  const categories = new Map<string, DeckCard[]>();
-  for (const dc of deck.cards.filter((c) => !c.is_commander)) {
-    const cat = dc.category || "Other";
-    if (!categories.has(cat)) categories.set(cat, []);
-    categories.get(cat)!.push(dc);
+  // Derive primary type from type_line for tab filtering
+  function getPrimaryType(typeLine: string | null): string {
+    if (!typeLine) return "Other";
+    for (const t of ["Planeswalker", "Creature", "Land", "Instant", "Sorcery", "Artifact", "Enchantment", "Battle"]) {
+      if (typeLine.includes(t)) return t;
+    }
+    return "Other";
   }
-  const sortedCategories = [...categories.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const allCategories = ["All", ...sortedCategories.map(([cat]) => cat)];
 
-  const baseFiltered = filterCategory === "All"
+  // Build type counts from non-commander cards
+  const typeGroups = new Map<string, number>();
+  for (const dc of deck.cards.filter((c) => !c.is_commander)) {
+    const t = getPrimaryType(dc.card.type_line);
+    typeGroups.set(t, (typeGroups.get(t) ?? 0) + dc.quantity);
+  }
+  const TYPE_ORDER = ["Creature", "Land", "Instant", "Sorcery", "Artifact", "Enchantment", "Planeswalker", "Battle", "Other"];
+  const allTypes = ["All", ...TYPE_ORDER.filter((t) => typeGroups.has(t))];
+
+  const baseFiltered = filterType === "All"
     ? deck.cards.filter((c) => !c.is_commander)
-    : deck.cards.filter((c) => !c.is_commander && (c.category || "Other") === filterCategory);
-
-  // Aggregate mode: collapse same scryfall_id rows, summing quantity
-  const aggregatedCards = aggregate
-    ? (() => {
-        const map = new Map<string, DeckCard>();
-        for (const dc of baseFiltered) {
-          if (map.has(dc.scryfall_id)) {
-            const ex = map.get(dc.scryfall_id)!;
-            map.set(dc.scryfall_id, { ...ex, quantity: ex.quantity + dc.quantity });
-          } else {
-            map.set(dc.scryfall_id, { ...dc });
-          }
-        }
-        return [...map.values()];
-      })()
-    : baseFiltered;
+    : deck.cards.filter((c) => !c.is_commander && getPrimaryType(c.card.type_line) === filterType);
 
   function sortCards(cards: DeckCard[]): DeckCard[] {
     return [...cards].sort((a, b) => {
@@ -176,7 +167,7 @@ export default function DeckDetail() {
     });
   }
 
-  const filteredCards = sortCards(aggregatedCards);
+  const filteredCards = sortCards(baseFiltered);
 
   function handleSort(col: typeof sortCol) {
     if (sortCol === col) setSortDir((d) => d === "asc" ? "desc" : "asc");
@@ -349,37 +340,25 @@ export default function DeckDetail() {
               </div>
             ) : (
               <div className="flex gap-2 items-center">
-                {/* Category filter tabs — horizontally scrollable */}
+                {/* Type filter tabs — horizontally scrollable */}
                 <div className="flex gap-1 overflow-x-auto flex-1 pb-0.5" style={{ scrollbarWidth: "none" }}>
-                  {allCategories.map((cat) => (
+                  {allTypes.map((type) => (
                     <button
-                      key={cat}
-                      onClick={() => setFilterCategory(cat)}
+                      key={type}
+                      onClick={() => setFilterType(type)}
                       className={`px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                        filterCategory === cat
+                        filterType === type
                           ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                           : "text-gray-500 hover:text-gray-300 hover:bg-gray-700/50"
                       }`}
                     >
-                      {cat}
-                      {cat !== "All" && (
-                        <span className="ml-1 text-gray-600">
-                          ({categories.get(cat)?.reduce((s: number, c: DeckCard) => s + c.quantity, 0) || 0})
-                        </span>
+                      {type}
+                      {type !== "All" && (
+                        <span className="ml-1 text-gray-600">({typeGroups.get(type) ?? 0})</span>
                       )}
                     </button>
                   ))}
                 </div>
-                {/* Aggregate toggle */}
-                <button
-                  onClick={() => setAggregate((v) => !v)}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
-                    aggregate ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-gray-800 text-gray-500 border-gray-700 hover:text-gray-300"
-                  }`}
-                  title={aggregate ? "Switch to individual view" : "Collapse duplicate cards"}
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                </button>
                 {/* Mobile stats toggle */}
                 {stats && (
                   <button
@@ -397,6 +376,22 @@ export default function DeckDetail() {
                   <span className="sm:hidden">Add</span>
                 </button>
               </div>
+              {/* Mobile sort bar */}
+              <div className="md:hidden flex gap-1 pt-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                <span className="text-xs text-gray-600 shrink-0 self-center">Sort:</span>
+                {([ ["name", "Name"], ["cmc", "Mana"], ["type", "Type"], ["price", "Price"] ] as [typeof sortCol, string][]).map(([col, label]) => (
+                  <button
+                    key={col}
+                    onClick={() => handleSort(col)}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded text-xs shrink-0 transition-colors ${sortCol === col ? "text-amber-400" : "text-gray-500 hover:text-gray-300"}`}
+                  >
+                    {label}
+                    {sortCol === col
+                      ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                      : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -411,9 +406,9 @@ export default function DeckDetail() {
 
           {/* Cards list */}
           <div className="flex-1 overflow-auto">
-            {/* Commanders */}
-            {commanders.length > 0 && filterCategory === "All" && (
-              <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20">
+            {/* Commanders — desktop only (commander image is shown in the header on mobile) */}
+            {commanders.length > 0 && filterType === "All" && (
+              <div className="hidden md:block px-4 py-2 bg-amber-500/5 border-b border-amber-500/20">
                 <div className="text-xs font-medium text-amber-500 uppercase tracking-wider mb-2">Commander</div>
                 {/* Desktop table row */}
                 <table className="hidden md:table w-full">
@@ -458,7 +453,6 @@ export default function DeckDetail() {
                       <SortTh col="cmc" label="Mana" />
                       <SortTh col="type" label="Type" />
                       <SortTh col="category" label="Category" />
-                      {aggregate && <th className="text-center py-2.5 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">Qty</th>}
                       <SortTh col="price" label="Price" className="text-right" />
                       <th className="py-2.5 px-4 w-20"></th>
                     </tr>
@@ -468,7 +462,6 @@ export default function DeckDetail() {
                         <CardRow
                           key={dc.id}
                           dc={dc}
-                          showQty={aggregate}
                           onRemove={() => removeMutation.mutate(dc.scryfall_id)}
                           onSetCommander={() => commanderMutation.mutate({ scryfallId: dc.scryfall_id, isCommander: true })}
                           onIncrement={() => addMutation.mutate({ scryfallId: dc.scryfall_id, category: dc.category || "Other", foil: dc.foil })}
@@ -524,14 +517,13 @@ export default function DeckDetail() {
   );
 }
 
-function CardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, isCommander = false, showQty = false }: {
+function CardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, isCommander = false }: {
   dc: DeckCard;
   onRemove: () => void;
   onSetCommander: () => void;
   onIncrement?: () => void;
   canAdd?: boolean;
   isCommander?: boolean;
-  showQty?: boolean;
 }) {
   const price = parseFloat(dc.card.prices?.usd || "0");
 
@@ -548,7 +540,7 @@ function CardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, is
       </td>
       <td className="py-2 px-4">
         <div className="font-medium text-gray-100">{dc.card.name}</div>
-        {!showQty && dc.quantity > 1 && <div className="text-xs text-amber-400">×{dc.quantity}</div>}
+        {dc.quantity > 1 && <div className="text-xs text-amber-400">×{dc.quantity}</div>}
       </td>
       <td className="py-2 px-4"><ManaCost cost={dc.card.mana_cost} size="sm" /></td>
       <td className="py-2 px-4 text-gray-400 text-xs max-w-32 truncate">{dc.card.type_line}</td>
@@ -561,7 +553,6 @@ function CardRow({ dc, onRemove, onSetCommander, onIncrement, canAdd = false, is
           {dc.category || "Other"}
         </span>
       </td>
-      {showQty && <td className="py-2 px-4 text-center text-sm font-medium text-white">×{dc.quantity}</td>}
       <td className="py-2 px-4 text-right text-xs text-amber-400">${price.toFixed(2)}</td>
       <td className="py-2 px-4">
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
