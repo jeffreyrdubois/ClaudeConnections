@@ -339,7 +339,8 @@ export default function DeckDetail() {
                 </div>
               </div>
             ) : (
-              <div className="flex gap-2 items-center">
+              <>
+            <div className="flex gap-2 items-center">
                 {/* Type filter tabs — horizontally scrollable */}
                 <div className="flex gap-1 overflow-x-auto flex-1 pb-0.5" style={{ scrollbarWidth: "none" }}>
                   {allTypes.map((type) => (
@@ -392,6 +393,7 @@ export default function DeckDetail() {
                   </button>
                 ))}
               </div>
+            </>
             )}
           </div>
 
