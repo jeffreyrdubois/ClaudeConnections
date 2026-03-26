@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { searchScryfall, getCardByName } from "../scryfall/client.js";
-import { searchScryfallCache } from "../db/index.js";
+import { searchScryfallCache, getOwnershipForNames } from "../db/index.js";
 
 export const scryfallRouter = Router();
 
@@ -28,6 +28,40 @@ scryfallRouter.get("/search", async (req, res) => {
     // Fall back to Scryfall API
     const result = await searchScryfall(q, { unique: "cards", order: "name", page });
     res.json({ ...result, source: "scryfall" });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// GET /api/scryfall/shop?q=
+// Like /search but also enriches each result with ownership counts from the collection
+scryfallRouter.get("/shop", async (req, res) => {
+  const q = (req.query.q as string || "").trim();
+  if (!q || q.length < 2) {
+    res.json({ cards: [], total_cards: 0, has_more: false });
+    return;
+  }
+
+  try {
+    // Try local cache first
+    const cached = searchScryfallCache(q, 20);
+    let cards = cached;
+    let meta = { total_cards: cached.length, has_more: false, source: "cache" };
+
+    if (cached.length < 3) {
+      const result = await searchScryfall(q, { unique: "cards", order: "name", page: 1 });
+      cards = result.cards;
+      meta = { total_cards: result.total_cards, has_more: result.has_more, source: "scryfall" };
+    }
+
+    const ownership = getOwnershipForNames(cards.map((c) => c.name));
+    const enriched = cards.map((card) => {
+      const o = ownership.get(card.name.toLowerCase());
+      return { ...card, owned_copies: o?.total ?? 0, unassigned_copies: o?.unassigned ?? 0 };
+    });
+
+    res.json({ ...meta, cards: enriched });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

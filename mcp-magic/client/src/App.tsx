@@ -6,6 +6,7 @@ import Collection from "./pages/Collection";
 import DeckDetail from "./pages/DeckDetail";
 import Decks from "./pages/Decks";
 import Folders from "./pages/Folders";
+import Shop from "./pages/Shop";
 import Statistics from "./pages/Statistics";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,7 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/collection" replace />} />
         <Route path="collection" element={<Collection />} />
+        <Route path="shop" element={<Shop />} />
         <Route path="folders" element={<Folders />} />
         <Route path="decks" element={<Decks />} />
         <Route path="decks/:id" element={<DeckDetail />} />
