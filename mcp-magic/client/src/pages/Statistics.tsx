@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getCollectionStats, getFolders, getDecks } from "../api/client";
 import { BarChart3, TrendingUp, Layers, DollarSign, Filter, X } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { StatsFilter } from "../types";
 import ColorPie from "../components/stats/ColorPie";
 import ManaCurve from "../components/stats/ManaCurve";
@@ -11,8 +12,20 @@ import { RARITY_COLORS, CONDITION_LABELS } from "../types";
 const CARD_TYPES = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land"];
 
 export default function Statistics() {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<StatsFilter>({});
   const [showFilters, setShowFilters] = useState(false);
+
+  function goToCollection(extra: Record<string, string>) {
+    const params = new URLSearchParams();
+    if (filter.owner) params.set("owner", filter.owner);
+    if (filter.folder_id !== undefined && filter.folder_id !== null) params.set("folder_id", String(filter.folder_id));
+    if (filter.condition) params.set("condition", filter.condition);
+    if (filter.set_code) params.set("set_code", filter.set_code);
+    if (filter.deck_id !== undefined) params.set("deck_id", String(filter.deck_id));
+    for (const [k, v] of Object.entries(extra)) params.set(k, v);
+    navigate(`/collection?${params.toString()}`);
+  }
 
   const { data: folders } = useQuery({ queryKey: ["folders"], queryFn: getFolders });
   const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
@@ -213,7 +226,7 @@ export default function Statistics() {
           <ManaCurve curve={manaCurve} />
         </div>
         <div className="card p-4">
-          <TypeBreakdown types={typeDist} />
+          <TypeBreakdown types={typeDist} onTypeClick={(type) => goToCollection({ type })} />
         </div>
       </div>
 
@@ -224,7 +237,12 @@ export default function Statistics() {
           {["mythic", "rare", "uncommon", "common"].map((rarity) => {
             const row = stats.byRarity?.find((r) => r.rarity === rarity);
             return (
-              <div key={rarity} className="text-center">
+              <div
+                key={rarity}
+                className="text-center cursor-pointer hover:bg-gray-700/30 rounded-lg p-2 -m-2 transition-colors"
+                onClick={() => goToCollection({ rarity })}
+                title={`View ${rarity} cards in collection`}
+              >
                 <div className={`text-2xl font-bold ${RARITY_COLORS[rarity]}`}>
                   {row?.unique_cards || 0}
                 </div>
@@ -256,7 +274,12 @@ export default function Statistics() {
               {stats.topByValue.slice(0, 15).map((card, i) => {
                 const price = parseFloat(card.prices?.usd || "0");
                 return (
-                  <tr key={i} className="border-b border-gray-700/20 hover:bg-gray-800/30">
+                  <tr
+                    key={i}
+                    className="border-b border-gray-700/20 hover:bg-gray-800/30 cursor-pointer"
+                    onClick={() => goToCollection({ search: card.name })}
+                    title={`View ${card.name} in collection`}
+                  >
                     <td className="py-2.5 px-4 text-gray-600 text-xs">{i + 1}</td>
                     <td className="py-2.5 px-4 text-gray-200">{card.name}</td>
                     <td className="py-2.5 px-4 text-right text-amber-400">${price.toFixed(2)}</td>
