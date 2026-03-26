@@ -222,24 +222,34 @@ decksRouter.post("/:id/cards", async (req, res) => {
     return;
   }
 
-  // Enforce: total copies assigned across ALL other decks + requested ≤ owned
-  const requestedQty = Math.max(1, body.quantity || 1);
-  const assignedElsewhere = db.prepare(
+  // How many are already in THIS deck
+  const inThisDeck = (db.prepare(
+    "SELECT COALESCE(quantity, 0) as qty FROM deck_cards WHERE scryfall_id = ? AND deck_id = ?"
+  ).get(scryfallId, deck_id) as { qty: number } | undefined)?.qty ?? 0;
+
+  // How many are in OTHER decks
+  const assignedElsewhere = (db.prepare(
     "SELECT COALESCE(SUM(quantity), 0) as total FROM deck_cards WHERE scryfall_id = ? AND deck_id != ?"
-  ).get(scryfallId, deck_id) as { total: number };
-  const maxAllowed = ownedRow.total - assignedElsewhere.total;
-  if (requestedQty > maxAllowed) {
+  ).get(scryfallId, deck_id) as { total: number }).total;
+
+  // Max additional copies we can add to this deck
+  const requestedQty = Math.max(1, body.quantity || 1);
+  const maxCanAdd = ownedRow.total - assignedElsewhere - inThisDeck;
+  if (requestedQty > maxCanAdd) {
     res.status(400).json({
-      error: `You own ${ownedRow.total} cop${ownedRow.total === 1 ? "y" : "ies"} of this card. ${assignedElsewhere.total} already assigned to other decks, so at most ${maxAllowed} can be added here.`,
+      error: `You own ${ownedRow.total} cop${ownedRow.total === 1 ? "y" : "ies"}. ${inThisDeck} already in this deck, ${assignedElsewhere} in other decks — at most ${maxCanAdd} more can be added.`,
     });
     return;
   }
+
+  // New total quantity for this card in this deck (existing + requested)
+  const newQty = inThisDeck + requestedQty;
 
   try {
     const dc = addCardToDeck({
       deck_id,
       scryfall_id: scryfallId,
-      quantity: Math.max(1, body.quantity || 1),
+      quantity: newQty,
       is_commander: body.is_commander ?? false,
       category: body.category,
     });
