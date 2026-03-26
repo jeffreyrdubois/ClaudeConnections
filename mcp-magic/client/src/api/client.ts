@@ -92,6 +92,10 @@ export function deleteCollectionCard(id: number): Promise<void> {
   return request<void>(`/collection/${id}`, { method: "DELETE" });
 }
 
+export function bulkDeleteCollectionCards(ids: number[]): Promise<{ deleted: number }> {
+  return request<{ deleted: number }>("/collection/bulk", { method: "DELETE", body: JSON.stringify({ ids }) });
+}
+
 // ── Folders ────────────────────────────────────────────────────────────────────
 
 export function getFolders(): Promise<Folder[]> {
