@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // Minimal duck-type — both ScryfallCard and CollectionCard satisfy this
 export interface CardLike {
@@ -56,16 +56,54 @@ export default function CardImage({ card, size = "normal", className = "", showH
   );
 }
 
-// Hoverable card image — shows a large preview on hover
+// Full-screen modal shown when a card thumbnail is clicked
+function CardModal({ card, onClose }: { card: CardLike; onClose: () => void }) {
+  const url = getImageUrl(card, "large") || getImageUrl(card, "normal");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={card.name}
+          className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <div className="text-white text-sm">{card.name}</div>
+      )}
+    </div>
+  );
+}
+
+// Hoverable + clickable card image:
+//   Desktop — hover shows a side preview; click opens full-size modal
+//   Mobile  — click opens full-size modal (no hover preview)
 export function HoverCardImage({ card, children }: { card: CardLike; children: React.ReactNode }) {
-  const [show, setShow] = useState(false);
+  const [showHover, setShowHover] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const url = getImageUrl(card, "normal");
 
   return (
-    <div className="relative inline-block" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+    <div
+      className="relative inline-block cursor-pointer"
+      onMouseEnter={() => setShowHover(true)}
+      onMouseLeave={() => setShowHover(false)}
+      onClick={() => setShowModal(true)}
+    >
       {children}
-      {show && url && (
-        <div className="absolute z-50 left-full top-0 ml-2 pointer-events-none">
+      {/* Hover preview — desktop only */}
+      {showHover && url && (
+        <div className="absolute z-40 left-full top-0 ml-2 pointer-events-none hidden md:block">
           <img
             src={url}
             alt={card.name}
@@ -73,6 +111,7 @@ export function HoverCardImage({ card, children }: { card: CardLike; children: R
           />
         </div>
       )}
+      {showModal && <CardModal card={card} onClose={() => setShowModal(false)} />}
     </div>
   );
 }

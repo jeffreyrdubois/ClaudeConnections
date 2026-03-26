@@ -204,13 +204,15 @@ export default function DeckDetail() {
         {/* Commander image + deck identity row */}
         <div className="flex items-start gap-3 md:gap-6">
           {deck.commander_image && (
-            <div className="w-16 h-[88px] md:w-20 md:h-28 shrink-0 rounded-lg overflow-hidden shadow-xl">
-              <img
-                src={deck.commander_image}
-                alt={deck.commander_name || "Commander"}
-                className="w-full h-full object-cover object-[center_10%]"
-              />
-            </div>
+            <HoverCardImage card={commanders[0]?.card ?? { name: deck.commander_name || "Commander", image_uris: { normal: deck.commander_image, large: deck.commander_image }, card_faces: null }}>
+              <div className="w-16 h-[88px] md:w-20 md:h-28 shrink-0 rounded-lg overflow-hidden shadow-xl">
+                <img
+                  src={deck.commander_image}
+                  alt={deck.commander_name || "Commander"}
+                  className="w-full h-full object-cover object-[center_10%]"
+                />
+              </div>
+            </HoverCardImage>
           )}
 
           <div className="flex-1 min-w-0">
@@ -397,17 +399,17 @@ export default function DeckDetail() {
             )}
           </div>
 
-          {/* Mobile stats panel (collapsible) */}
+          {/* Mobile stats panel — fills all remaining space, hides card list */}
           {stats && showStats && (
-            <div className="md:hidden border-b border-gray-700/30 p-4 space-y-4 overflow-auto shrink-0 max-h-72">
+            <div className="md:hidden flex-1 overflow-auto p-4 space-y-6">
               <ManaCurve curve={stats.mana_curve} title="Mana Curve" />
               <ColorPie distribution={stats.color_distribution} title="Color Distribution" />
               <TypeBreakdown types={stats.type_breakdown} title="Card Types" />
             </div>
           )}
 
-          {/* Cards list */}
-          <div className="flex-1 overflow-auto">
+          {/* Cards list — hidden on mobile when stats panel is open */}
+          <div className={`flex-1 overflow-auto ${showStats ? "hidden md:block" : ""}`}>
             {/* Commanders — desktop only (commander image is shown in the header on mobile) */}
             {commanders.length > 0 && filterType === "All" && (
               <div className="hidden md:block px-4 py-2 bg-amber-500/5 border-b border-amber-500/20">
