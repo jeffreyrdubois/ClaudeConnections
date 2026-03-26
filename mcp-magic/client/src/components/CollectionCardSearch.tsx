@@ -12,9 +12,10 @@ interface CollectionCardSearchProps {
   onSelect: (card: CollectionCard) => void;
   placeholder?: string;
   className?: string;
+  autoFocus?: boolean;
 }
 
-export default function CollectionCardSearch({ onSelect, placeholder = "Search your collection...", className = "" }: CollectionCardSearchProps) {
+export default function CollectionCardSearch({ onSelect, placeholder = "Search your collection...", className = "", autoFocus = false }: CollectionCardSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CollectionCard[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,6 +79,7 @@ export default function CollectionCardSearch({ onSelect, placeholder = "Search y
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
           className="input pl-9 pr-8"
+          autoFocus={autoFocus}
         />
         {query && (
           <button
@@ -90,7 +92,7 @@ export default function CollectionCardSearch({ onSelect, placeholder = "Search y
       </div>
 
       {open && (results.length > 0 || loading) && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-card border border-gray-700 rounded-xl shadow-2xl overflow-y-auto max-h-72">
           {loading && <div className="p-3 text-center text-gray-400 text-sm">Searching collection...</div>}
           {!loading && results.map((card, i) => (
             <button
@@ -104,7 +106,10 @@ export default function CollectionCardSearch({ onSelect, placeholder = "Search y
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-100 truncate">{card.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-gray-100 truncate">{card.name}</span>
+                  {card.foil && <span className="text-xs text-amber-400 shrink-0">✦ Foil</span>}
+                </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <img
                     src={`https://svgs.scryfall.io/sets/${card.set_code}.svg`}
@@ -125,7 +130,10 @@ export default function CollectionCardSearch({ onSelect, placeholder = "Search y
                 <div className={`text-xs font-medium ${
                   card.condition === "NM" ? "text-green-400" : card.condition === "LP" ? "text-blue-400" : "text-yellow-400"
                 }`}>{card.condition}</div>
-                {card.prices?.usd && <div className="text-xs text-amber-400">${card.prices.usd}</div>}
+                {card.foil
+                  ? <div className="text-xs text-amber-400">${card.prices?.usd_foil || card.prices?.usd || "—"}</div>
+                  : card.prices?.usd && <div className="text-xs text-amber-400">${card.prices.usd}</div>
+                }
               </div>
             </button>
           ))}

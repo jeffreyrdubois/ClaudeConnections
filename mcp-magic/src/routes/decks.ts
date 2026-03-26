@@ -151,13 +151,13 @@ decksRouter.patch("/:id", async (req, res) => {
       commanderScryfallId = card.id;
     }
 
-    const updated = updateDeck(id, {
-      name: body.name?.trim(),
-      commander_scryfall_id: commanderScryfallId,
-      partner_scryfall_id: body.partner_scryfall_id,
-      description: body.description?.trim(),
-      ...("owner" in body ? { owner: body.owner ?? null } : {}),
-    });
+    const updateData: Parameters<typeof updateDeck>[1] = {};
+    if (body.name !== undefined) updateData.name = body.name!.trim();
+    if (commanderScryfallId !== undefined) updateData.commander_scryfall_id = commanderScryfallId;
+    if (body.partner_scryfall_id !== undefined) updateData.partner_scryfall_id = body.partner_scryfall_id;
+    if (body.description !== undefined) updateData.description = body.description!.trim();
+    if ("owner" in body) updateData.owner = body.owner ?? null;
+    const updated = updateDeck(id, updateData);
     res.json(updated);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
