@@ -13,7 +13,7 @@ export const collectionRouter = Router();
 // GET /api/collection
 // Query: folder_id, search, colors (comma separated), type, foil, condition, owner, legal
 collectionRouter.get("/", (req, res) => {
-  const { folder_id, search, colors, type, foil, condition, owner, legal, set_code, deck_id } = req.query as Record<string, string>;
+  const { folder_id, search, colors, type, foil, condition, owner, legal, set_code, deck_id, rarity } = req.query as Record<string, string>;
   const cards = getCollection({
     folder_id: folder_id === "null" ? null : folder_id ? parseInt(folder_id) : undefined,
     search: search || undefined,
@@ -25,6 +25,7 @@ collectionRouter.get("/", (req, res) => {
     legal: legal || undefined,
     set_code: set_code || undefined,
     deck_id: deck_id === "none" ? "none" : deck_id ? parseInt(deck_id) : undefined,
+    rarity: rarity || undefined,
   });
   res.json(cards);
 });

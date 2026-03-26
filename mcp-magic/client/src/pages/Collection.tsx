@@ -28,18 +28,23 @@ export default function Collection() {
   const [searchParams] = useSearchParams();
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [filterFolder, setFilterFolder] = useState<string>(() => searchParams.get("folder_id") || "");
   const [filterColors, setFilterColors] = useState<string[]>([]);
-  const [filterType, setFilterType] = useState("");
-  const [filterCondition, setFilterCondition] = useState("");
-  const [filterOwner, setFilterOwner] = useState("");
+  const [filterType, setFilterType] = useState(() => searchParams.get("type") || "");
+  const [filterCondition, setFilterCondition] = useState(() => searchParams.get("condition") || "");
+  const [filterOwner, setFilterOwner] = useState(() => searchParams.get("owner") || "");
   const [filterLegal, setFilterLegal] = useState("");
-  const [filterSet, setFilterSet] = useState("");
-  const [filterDeck, setFilterDeck] = useState("");
+  const [filterSet, setFilterSet] = useState(() => searchParams.get("set_code") || "");
+  const [filterDeck, setFilterDeck] = useState(() => searchParams.get("deck_id") || "");
+  const [filterRarity, setFilterRarity] = useState(() => searchParams.get("rarity") || "");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aggregate, setAggregate] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(() =>
+    !!(searchParams.get("type") || searchParams.get("condition") || searchParams.get("owner") ||
+       searchParams.get("set_code") || searchParams.get("deck_id") || searchParams.get("rarity") ||
+       searchParams.get("folder_id"))
+  );
   const [groupBy, setGroupBy] = useState<GroupByKey[]>([]);
   const [sortCol, setSortCol] = useState<SortCol>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -57,7 +62,7 @@ export default function Collection() {
   const { data: decks } = useQuery({ queryKey: ["decks"], queryFn: getDecks });
 
   const { data: cards = [], isLoading } = useQuery({
-    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal, filterSet, filterDeck }],
+    queryKey: ["collection", { search, filterFolder, filterColors, filterType, filterCondition, filterOwner, filterLegal, filterSet, filterDeck, filterRarity }],
     queryFn: () =>
       getCollection({
         search: search || undefined,
@@ -69,6 +74,7 @@ export default function Collection() {
         legal: filterLegal || undefined,
         set_code: filterSet || undefined,
         deck_id: filterDeck || undefined,
+        rarity: filterRarity || undefined,
       }),
     staleTime: 30000,
   });
@@ -334,7 +340,7 @@ export default function Collection() {
             <button
               onClick={() => setShowFilters((v) => !v)}
               className={`md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                showFilters || filterColors.length || filterFolder || filterType || filterCondition || filterOwner || filterLegal || filterSet || filterDeck || search
+                showFilters || filterColors.length || filterFolder || filterType || filterCondition || filterOwner || filterLegal || filterSet || filterDeck || filterRarity || search
                   ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                   : "bg-gray-800 text-gray-400 border-gray-700"
               }`}
@@ -387,6 +393,31 @@ export default function Collection() {
             onChange={(e) => setSearch(e.target.value)}
             className="input pl-9 w-full"
           />
+        </div>
+
+        {/* Mobile sort bar */}
+        <div className="md:hidden flex gap-1.5 overflow-x-auto pb-1 mb-1 scrollbar-none">
+          {(["name", "cmc", "type", "cond", "price"] as SortCol[]).map((col) => {
+            const labels: Record<string, string> = { name: "Name", cmc: "CMC", type: "Type", cond: "Cond.", price: "Price" };
+            const active = sortCol === col;
+            return (
+              <button
+                key={col}
+                onClick={() => handleSort(col)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border shrink-0 transition-colors ${
+                  active
+                    ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                    : "bg-gray-800 text-gray-400 border-gray-700"
+                }`}
+              >
+                {labels[col]}
+                {active
+                  ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                  : <ArrowUpDown className="w-3 h-3 opacity-40" />
+                }
+              </button>
+            );
+          })}
         </div>
 
         {/* Group by (aggregate mode only) */}
@@ -470,6 +501,13 @@ export default function Collection() {
               <option value="">All Decks</option>
               <option value="none">Not in any deck</option>
               {decks?.map((d) => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
+            </select>
+
+            <select value={filterRarity} onChange={(e) => setFilterRarity(e.target.value)} className="select w-full md:w-36">
+              <option value="">All Rarities</option>
+              {["common", "uncommon", "rare", "mythic"].map((r) => (
+                <option key={r} value={r} className="capitalize">{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+              ))}
             </select>
 
             {/* Color filters */}

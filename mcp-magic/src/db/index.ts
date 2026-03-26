@@ -368,6 +368,7 @@ export interface CollectionFilter {
   legal?: string;
   set_code?: string;
   deck_id?: number | "none";
+  rarity?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
@@ -411,6 +412,10 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
   } else if (filter.deck_id !== undefined) {
     sql += " AND EXISTS (SELECT 1 FROM deck_cards dkf WHERE dkf.scryfall_id = cc.scryfall_id AND dkf.deck_id = ?)";
     params.push(filter.deck_id);
+  }
+  if (filter.rarity) {
+    sql += " AND LOWER(sc.rarity) = LOWER(?)";
+    params.push(filter.rarity);
   }
   sql += " ORDER BY sc.name";
 

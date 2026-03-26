@@ -31,6 +31,7 @@ export interface CollectionFilter {
   legal?: string;
   set_code?: string;
   deck_id?: number | "none" | string;
+  rarity?: string;
 }
 
 export function getCollection(filter: CollectionFilter = {}): Promise<CollectionCard[]> {
@@ -45,6 +46,7 @@ export function getCollection(filter: CollectionFilter = {}): Promise<Collection
   if (filter.legal) params.set("legal", filter.legal);
   if (filter.deck_id !== undefined) params.set("deck_id", String(filter.deck_id));
   if (filter.set_code) params.set("set_code", filter.set_code);
+  if (filter.rarity) params.set("rarity", filter.rarity);
   return request<CollectionCard[]>(`/collection?${params}`);
 }
 

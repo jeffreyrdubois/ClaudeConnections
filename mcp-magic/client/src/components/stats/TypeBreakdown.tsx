@@ -3,6 +3,7 @@ import { Cell, ResponsiveContainer, Tooltip, Treemap } from "recharts";
 interface TypeBreakdownProps {
   types: Record<string, number>;
   title?: string;
+  onTypeClick?: (type: string) => void;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -38,7 +39,7 @@ function CustomContent({ x, y, width, height, name, value }: {
   );
 }
 
-export default function TypeBreakdown({ types, title = "Card Types" }: TypeBreakdownProps) {
+export default function TypeBreakdown({ types, title = "Card Types", onTypeClick }: TypeBreakdownProps) {
   const data = Object.entries(types)
     .filter(([, v]) => v > 0)
     .map(([k, v]) => ({ name: k, size: v, value: v }))
@@ -75,7 +76,11 @@ export default function TypeBreakdown({ types, title = "Card Types" }: TypeBreak
       {/* Legend */}
       <div className="flex flex-wrap gap-2 mt-2">
         {data.map((entry) => (
-          <div key={entry.name} className="flex items-center gap-1.5">
+          <div
+            key={entry.name}
+            className={`flex items-center gap-1.5 ${onTypeClick ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+            onClick={() => onTypeClick?.(entry.name)}
+          >
             <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: TYPE_COLORS[entry.name] || "#374151" }} />
             <span className="text-xs text-gray-400">{entry.name}</span>
             <span className="text-xs text-gray-600">{entry.value}</span>
