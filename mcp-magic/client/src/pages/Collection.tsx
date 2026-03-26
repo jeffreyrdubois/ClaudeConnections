@@ -45,6 +45,7 @@ export default function Collection() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Bulk edit state — keyed by row key "cardId-rowIdx" so each displayed row is independently selectable
+  const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOwner, setBulkOwner] = useState("");
   const [bulkFolder, setBulkFolder] = useState("");
@@ -117,6 +118,15 @@ export default function Collection() {
     setBulkOwner("");
     setBulkFolder("");
     setBulkDeck("");
+  }
+
+  function toggleSelectMode() {
+    if (selectMode) {
+      clearBulkSelection();
+      setSelectMode(false);
+    } else {
+      setSelectMode(true);
+    }
   }
 
   function handleDelete(card: CollectionCard) {
@@ -331,6 +341,18 @@ export default function Collection() {
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
               {showFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            {/* Mobile: select mode toggle */}
+            <button
+              onClick={toggleSelectMode}
+              className={`md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                selectMode
+                  ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                  : "bg-gray-800 text-gray-400 border-gray-700"
+              }`}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              {selectMode ? "Done" : "Select"}
             </button>
 
             <button
@@ -549,6 +571,7 @@ export default function Collection() {
                   key={`${card.id}-${idx}`}
                   card={card}
                   aggregate={aggregate}
+                  selectMode={selectMode}
                   selected={selectedIds.has(`${card.id}-${idx}`)}
                   onToggleSelect={() => toggleSelect(`${card.id}-${idx}`)}
                   onDelete={() => handleDelete(card)}
@@ -794,9 +817,10 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
   );
 }
 
-function MobileCardRow({ card, aggregate, selected, onToggleSelect, onDelete, onUpdate, folders, decks }: {
+function MobileCardRow({ card, aggregate, selectMode, selected, onToggleSelect, onDelete, onUpdate, folders, decks }: {
   card: CollectionCard;
   aggregate: boolean;
+  selectMode: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
@@ -823,14 +847,16 @@ function MobileCardRow({ card, aggregate, selected, onToggleSelect, onDelete, on
     <li className={`${selected ? "bg-amber-500/5" : ""}`}>
       {/* Main row */}
       <div className="flex items-center gap-3 px-3 py-2.5">
-        {/* Checkbox */}
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          onClick={(e) => e.stopPropagation()}
-          className="w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
-        />
+        {/* Checkbox — only visible in select mode */}
+        {selectMode && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            className="w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
+          />
+        )}
 
         {/* Thumbnail */}
         <HoverCardImage card={card}>
