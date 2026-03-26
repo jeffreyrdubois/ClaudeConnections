@@ -2,7 +2,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X, ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { getCollection, getFolders, getDecks, deleteCollectionCard, updateCollectionCard, bulkUpdateCards } from "../api/client";
+import { getCollection, getFolders, getDecks, deleteCollectionCard, updateCollectionCard, bulkUpdateCards, bulkDeleteCollectionCards } from "../api/client";
 import type { CollectionCard, Condition } from "../types";
 import { CONDITION_LABELS, RARITY_COLORS } from "../types";
 import AddCardModal from "../components/AddCardModal";
@@ -100,11 +100,53 @@ export default function Collection() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => bulkDeleteCollectionCards(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["collection"] });
+      queryClient.invalidateQueries({ queryKey: ["collection-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      clearBulkSelection();
+    },
+  });
+
   function clearBulkSelection() {
     setSelectedIds(new Set());
     setBulkOwner("");
     setBulkFolder("");
     setBulkDeck("");
+  }
+
+  function handleDelete(card: CollectionCard) {
+    if (card.deck_name) {
+      alert(`"${card.name}" is assigned to a deck. Remove it from the deck first.`);
+      return;
+    }
+    // In individual mode, each row represents one copy — just decrement quantity
+    const orig = cards.find((c) => c.id === card.id);
+    const totalQty = orig?.quantity ?? 1;
+    if (!aggregate && totalQty > 1) {
+      if (!confirm(`Remove 1 copy of ${card.name} from collection? (${totalQty} total)`)) return;
+      updateMutation.mutate({ id: card.id, data: { quantity: totalQty - 1 } });
+    } else {
+      if (!confirm(`Remove ${card.name} from collection?`)) return;
+      deleteMutation.mutate(card.id);
+    }
+  }
+
+  function handleBulkDelete() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const inDeck = ids.some((id) => {
+      const c = cards.find((x) => x.id === id);
+      return c?.deck_name;
+    });
+    if (inDeck) {
+      alert("One or more selected cards are assigned to a deck. Remove them from their deck first.");
+      return;
+    }
+    if (!confirm(`Delete ${ids.length} card entr${ids.length === 1 ? "y" : "ies"} from collection?`)) return;
+    bulkDeleteMutation.mutate(ids);
   }
 
   function toggleSelect(id: number) {
@@ -452,7 +494,7 @@ export default function Collection() {
                     onToggleSelect={() => toggleSelect(card.id)}
                     onEdit={() => setEditingId(card.id)}
                     onCancelEdit={() => setEditingId(null)}
-                    onDelete={() => deleteMutation.mutate(card.id)}
+                    onDelete={() => handleDelete(card)}
                     onUpdate={(data) => updateMutation.mutate({ id: card.id, data })}
                     folders={folders || []}
                   />
@@ -469,7 +511,7 @@ export default function Collection() {
                   aggregate={aggregate}
                   selected={selectedIds.has(card.id)}
                   onToggleSelect={() => toggleSelect(card.id)}
-                  onDelete={() => deleteMutation.mutate(card.id)}
+                  onDelete={() => handleDelete(card)}
                   folders={folders || []}
                   decks={decks || []}
                   onUpdate={(data) => updateMutation.mutate({ id: card.id, data })}
@@ -518,6 +560,14 @@ export default function Collection() {
               className="btn-primary text-xs py-1.5 px-3 shrink-0"
             >
               {bulkMutation.isPending ? "Applying…" : "Apply"}
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteMutation.isPending}
+              className="flex items-center gap-1 text-xs py-1.5 px-3 shrink-0 rounded-lg bg-red-900/30 text-red-400 border border-red-800/40 hover:bg-red-900/50 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{bulkDeleteMutation.isPending ? "Deleting…" : "Delete"}</span>
             </button>
             <button onClick={clearBulkSelection} className="p-1 text-gray-500 hover:text-gray-300 shrink-0">
               <X className="w-4 h-4" />
@@ -692,7 +742,7 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
               <Edit2 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { if (confirm(`Remove ${card.name} from collection?`)) onDelete(); }}
+              onClick={onDelete}
               className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-red-400"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -863,7 +913,7 @@ function MobileCardRow({ card, aggregate, selected, onToggleSelect, onDelete, on
                 <Edit2 className="w-3.5 h-3.5" /> Edit
               </button>
               <button
-                onClick={() => { if (confirm(`Remove ${card.name} from collection?`)) onDelete(); }}
+                onClick={onDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 text-red-400 border border-gray-700 hover:bg-red-900/20 transition-colors flex-1 justify-center"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Remove

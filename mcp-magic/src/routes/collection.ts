@@ -3,7 +3,7 @@ import {
   getCollection, getCollectionCardById, addCollectionCard,
   updateCollectionCard, deleteCollectionCard, getCollectionStats,
   getTotalCollectionValue, getCardQuantityInCollection, searchCollectionForDeck,
-  bulkUpdateCollectionCards,
+  bulkUpdateCollectionCards, db,
   type StatsFilter,
 } from "../db/index.js";
 import { getCardByName } from "../scryfall/client.js";
@@ -192,11 +192,42 @@ collectionRouter.patch("/:id", (req, res) => {
   }
 });
 
+// DELETE /api/collection/bulk  ← must be before /:id
+collectionRouter.delete("/bulk", (req, res) => {
+  const { ids } = req.body as { ids?: number[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids array required" });
+    return;
+  }
+  // Check none are assigned to a deck
+  for (const id of ids) {
+    const card = getCollectionCardById(id);
+    if (!card) continue;
+    const inDeck = db.prepare("SELECT 1 FROM deck_cards WHERE scryfall_id = ? LIMIT 1").get(card.scryfall_id);
+    if (inDeck) {
+      res.status(400).json({ error: `"${card.name}" is assigned to a deck. Remove it from the deck first.` });
+      return;
+    }
+  }
+  let deleted = 0;
+  for (const id of ids) {
+    try { deleteCollectionCard(id); deleted++; } catch { /* skip */ }
+  }
+  res.json({ deleted });
+});
+
 // DELETE /api/collection/:id
 collectionRouter.delete("/:id", (req, res) => {
   const id = parseInt(req.params.id);
-  if (!getCollectionCardById(id)) {
+  const card = getCollectionCardById(id);
+  if (!card) {
     res.status(404).json({ error: "Collection entry not found" });
+    return;
+  }
+  // Block if any copies are assigned to a deck
+  const inDeck = db.prepare("SELECT 1 FROM deck_cards WHERE scryfall_id = ? LIMIT 1").get(card.scryfall_id);
+  if (inDeck) {
+    res.status(400).json({ error: `"${card.name}" is assigned to a deck. Remove it from the deck first.` });
     return;
   }
   deleteCollectionCard(id);
