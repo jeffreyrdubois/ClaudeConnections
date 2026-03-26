@@ -134,6 +134,7 @@ export function createDeck(data: {
   commander_scryfall_id?: string;
   partner_name?: string;
   description?: string;
+  owner?: string;
 }): Promise<DeckDetail> {
   return request<DeckDetail>("/decks", { method: "POST", body: JSON.stringify(data) });
 }
@@ -142,6 +143,7 @@ export function updateDeck(id: number, data: {
   name?: string;
   commander_name?: string;
   description?: string;
+  owner?: string | null;
 }): Promise<DeckDetail> {
   return request<DeckDetail>(`/decks/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }

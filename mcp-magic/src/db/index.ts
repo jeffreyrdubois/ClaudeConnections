@@ -110,8 +110,10 @@ db.exec(`
 // Migrations — add new columns without breaking existing databases
 try { db.exec("ALTER TABLE collection_cards ADD COLUMN owner TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE collection_cards ADD COLUMN legal TEXT NOT NULL DEFAULT 'Y'"); } catch { /* already exists */ }
-// Unique constraint: a scryfall_id can only appear in one deck at a time
-try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_cards_scryfall ON deck_cards(scryfall_id)"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE decks ADD COLUMN owner TEXT"); } catch { /* already exists */ }
+// Drop the over-restrictive unique index that prevented the same card from being in multiple decks.
+// The correct constraint is UNIQUE(deck_id, scryfall_id) which already exists in the table DDL.
+try { db.exec("DROP INDEX IF EXISTS idx_deck_cards_scryfall"); } catch { /* ignore */ }
 // Seed default users
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Jeffrey"); } catch { /* already exists */ }
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Abby"); } catch { /* already exists */ }
@@ -174,6 +176,7 @@ export interface Deck {
   commander_scryfall_id: string | null;
   partner_scryfall_id: string | null;
   description: string | null;
+  owner: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -327,13 +330,11 @@ const COLLECTION_SELECT = `
     sc.card_faces, sc.rarity, sc.legalities, sc.produced_mana,
     sc.power, sc.toughness, sc.loyalty,
     f.name as folder_name,
-    dkc.deck_id,
-    dk.name as deck_name
+    (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id LIMIT 1) as deck_id,
+    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id) as deck_name
   FROM collection_cards cc
   JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
   LEFT JOIN folders f ON f.id = cc.folder_id
-  LEFT JOIN deck_cards dkc ON dkc.scryfall_id = cc.scryfall_id
-  LEFT JOIN decks dk ON dk.id = dkc.deck_id
 `;
 
 function parseCollectionRow(row: Record<string, unknown>): CollectionRow {
@@ -620,15 +621,15 @@ export function getTotalCollectionValue(filterOrFolderId?: number | null | Stats
   return result.total ?? 0;
 }
 
-// Returns collection cards that are not assigned to any deck, with optional name search
+// Returns collection cards that still have at least one copy not yet assigned to any deck
 export function searchCollectionForDeck(query: string): CollectionRow[] {
-  const assignedIds = db.prepare(
-    "SELECT DISTINCT scryfall_id FROM deck_cards"
-  ).all() as { scryfall_id: string }[];
-  const assignedSet = new Set(assignedIds.map((r) => r.scryfall_id));
+  const assigned = db.prepare(
+    "SELECT scryfall_id, SUM(quantity) as total FROM deck_cards GROUP BY scryfall_id"
+  ).all() as { scryfall_id: string; total: number }[];
+  const assignedMap = new Map(assigned.map((r) => [r.scryfall_id, r.total]));
 
   const cards = getCollection({ search: query });
-  return cards.filter((c) => !assignedSet.has(c.scryfall_id));
+  return cards.filter((c) => c.quantity > (assignedMap.get(c.scryfall_id) ?? 0));
 }
 
 export function getCardQuantityInCollection(cardName: string): { total: number; entries: CollectionRow[] } {
@@ -747,16 +748,18 @@ export function createDeck(data: {
   commander_scryfall_id?: string;
   partner_scryfall_id?: string;
   description?: string;
+  owner?: string;
 }): Deck {
   return db.prepare(`
-    INSERT INTO decks (name, commander_scryfall_id, partner_scryfall_id, description)
-    VALUES (@name, @commander_scryfall_id, @partner_scryfall_id, @description)
+    INSERT INTO decks (name, commander_scryfall_id, partner_scryfall_id, description, owner)
+    VALUES (@name, @commander_scryfall_id, @partner_scryfall_id, @description, @owner)
     RETURNING *
   `).get({
     name: data.name,
     commander_scryfall_id: data.commander_scryfall_id ?? null,
     partner_scryfall_id: data.partner_scryfall_id ?? null,
     description: data.description ?? null,
+    owner: data.owner ?? null,
   }) as Deck;
 }
 
@@ -765,6 +768,7 @@ export function updateDeck(id: number, data: Partial<{
   commander_scryfall_id: string | null;
   partner_scryfall_id: string | null;
   description: string;
+  owner: string | null;
 }>): Deck | null {
   const fields: string[] = ["updated_at = unixepoch()"];
   const values: unknown[] = [];
@@ -772,6 +776,7 @@ export function updateDeck(id: number, data: Partial<{
   if ("commander_scryfall_id" in data) { fields.push("commander_scryfall_id = ?"); values.push(data.commander_scryfall_id ?? null); }
   if ("partner_scryfall_id" in data) { fields.push("partner_scryfall_id = ?"); values.push(data.partner_scryfall_id ?? null); }
   if ("description" in data) { fields.push("description = ?"); values.push(data.description); }
+  if ("owner" in data) { fields.push("owner = ?"); values.push(data.owner ?? null); }
   values.push(id);
   db.prepare(`UPDATE decks SET ${fields.join(", ")} WHERE id = ?`).run(...values);
   return db.prepare("SELECT * FROM decks WHERE id = ?").get(id) as Deck | null;

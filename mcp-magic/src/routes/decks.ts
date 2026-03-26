@@ -22,6 +22,7 @@ decksRouter.post("/", async (req, res) => {
     partner_name?: string;
     partner_scryfall_id?: string;
     description?: string;
+    owner?: string;
   };
 
   if (!body.name?.trim()) {
@@ -61,6 +62,7 @@ decksRouter.post("/", async (req, res) => {
       commander_scryfall_id: commanderScryfallId,
       partner_scryfall_id: partnerScryfallId,
       description: body.description?.trim(),
+      owner: body.owner?.trim() || undefined,
     });
 
     // Add commander to deck_cards if provided
@@ -135,6 +137,7 @@ decksRouter.patch("/:id", async (req, res) => {
     partner_name?: string;
     partner_scryfall_id?: string | null;
     description?: string;
+    owner?: string | null;
   };
 
   try {
@@ -153,6 +156,7 @@ decksRouter.patch("/:id", async (req, res) => {
       commander_scryfall_id: commanderScryfallId,
       partner_scryfall_id: body.partner_scryfall_id,
       description: body.description?.trim(),
+      ...("owner" in body ? { owner: body.owner ?? null } : {}),
     });
     res.json(updated);
   } catch (e: unknown) {
@@ -210,19 +214,24 @@ decksRouter.post("/:id/cards", async (req, res) => {
   }
 
   // Enforce: card must be in the collection
-  const collectionCards = getCollection({});
-  const inCollection = collectionCards.some((c) => c.scryfall_id === scryfallId);
-  if (!inCollection) {
+  const ownedRow = db.prepare(
+    "SELECT COALESCE(SUM(quantity), 0) as total FROM collection_cards WHERE scryfall_id = ?"
+  ).get(scryfallId) as { total: number };
+  if (!ownedRow.total) {
     res.status(400).json({ error: "Card must be added to your collection before adding to a deck." });
     return;
   }
 
-  // Enforce: card can only be in one deck at a time (skip if already in THIS deck)
-  const existingAssignment = db.prepare(
-    "SELECT deck_id FROM deck_cards WHERE scryfall_id = ? AND deck_id != ?"
-  ).get(scryfallId, deck_id) as { deck_id: number } | undefined;
-  if (existingAssignment) {
-    res.status(400).json({ error: "This card is already assigned to another deck. Each physical card can only be in one deck." });
+  // Enforce: total copies assigned across ALL other decks + requested ≤ owned
+  const requestedQty = Math.max(1, body.quantity || 1);
+  const assignedElsewhere = db.prepare(
+    "SELECT COALESCE(SUM(quantity), 0) as total FROM deck_cards WHERE scryfall_id = ? AND deck_id != ?"
+  ).get(scryfallId, deck_id) as { total: number };
+  const maxAllowed = ownedRow.total - assignedElsewhere.total;
+  if (requestedQty > maxAllowed) {
+    res.status(400).json({
+      error: `You own ${ownedRow.total} cop${ownedRow.total === 1 ? "y" : "ies"} of this card. ${assignedElsewhere.total} already assigned to other decks, so at most ${maxAllowed} can be added here.`,
+    });
     return;
   }
 

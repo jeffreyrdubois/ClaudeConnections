@@ -25,7 +25,6 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
   const [folderId, setFolderId] = useState<number | null>(defaultFolderId ?? null);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [owner, setOwner] = useState(user?.username || "");
-  const [legal, setLegal] = useState("Y");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -47,7 +46,6 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
         folder_id: folderId,
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
         owner: owner || null,
-        legal,
       });
       queryClient.invalidateQueries({ queryKey: ["collection"] });
       queryClient.invalidateQueries({ queryKey: ["collection-stats"] });
@@ -61,7 +59,6 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
         setCondition("NM");
         setPurchasePrice("");
         setOwner("");
-        setLegal("Y");
         setSuccess(null);
       }, 1500);
     } catch (e: unknown) {
@@ -153,13 +150,6 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
                 <option value="">— None —</option>
                 <option value="Jeffrey">Jeffrey</option>
                 <option value="Abby">Abby</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">Legal</label>
-              <select value={legal} onChange={(e) => setLegal(e.target.value)} className="select">
-                <option value="Y">Y — Legal</option>
-                <option value="N">N — Not Legal</option>
               </select>
             </div>
             <div>

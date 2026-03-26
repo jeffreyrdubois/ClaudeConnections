@@ -95,6 +95,7 @@ export interface DeckSummary {
   partner_name: string | null;
   partner_image: string | null;
   description: string | null;
+  owner: string | null;
   created_at: number;
   updated_at: number;
   card_count: number;

@@ -447,7 +447,7 @@ export default function Collection() {
                     key={`${card.id}-${idx}`}
                     card={card}
                     aggregate={aggregate}
-                    editing={editingId === card.id && aggregate}
+                    editing={editingId === card.id}
                     selected={selectedIds.has(card.id)}
                     onToggleSelect={() => toggleSelect(card.id)}
                     onEdit={() => setEditingId(card.id)}
