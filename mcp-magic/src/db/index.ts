@@ -115,6 +115,7 @@ try { db.exec("ALTER TABLE decks ADD COLUMN owner TEXT"); } catch { /* already e
 // The correct constraint is UNIQUE(deck_id, scryfall_id) which already exists in the table DDL.
 try { db.exec("DROP INDEX IF EXISTS idx_deck_cards_scryfall"); } catch { /* ignore */ }
 try { db.exec("ALTER TABLE deck_cards ADD COLUMN foil INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE deck_cards ADD COLUMN collection_card_id INTEGER REFERENCES collection_cards(id)"); } catch { /* already exists */ }
 // Seed default users
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Jeffrey"); } catch { /* already exists */ }
 try { db.prepare("INSERT OR IGNORE INTO users (username) VALUES (?)").run("Abby"); } catch { /* already exists */ }
@@ -333,9 +334,9 @@ const COLLECTION_SELECT = `
     sc.card_faces, sc.rarity, sc.legalities, sc.produced_mana,
     sc.power, sc.toughness, sc.loyalty,
     f.name as folder_name,
-    (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil LIMIT 1) as deck_id,
-    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil) as deck_name,
-    (SELECT COALESCE(SUM(dkc2.quantity), 0) FROM deck_cards dkc2 WHERE dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil) as assigned_qty
+    (SELECT dkc2.deck_id FROM deck_cards dkc2 WHERE dkc2.collection_card_id = cc.id OR (dkc2.collection_card_id IS NULL AND dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil) LIMIT 1) as deck_id,
+    (SELECT GROUP_CONCAT(dk2.name, ' / ') FROM deck_cards dkc2 JOIN decks dk2 ON dk2.id = dkc2.deck_id WHERE dkc2.collection_card_id = cc.id OR (dkc2.collection_card_id IS NULL AND dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil)) as deck_name,
+    (SELECT COALESCE(SUM(dkc2.quantity), 0) FROM deck_cards dkc2 WHERE dkc2.collection_card_id = cc.id OR (dkc2.collection_card_id IS NULL AND dkc2.scryfall_id = cc.scryfall_id AND dkc2.foil = cc.foil)) as assigned_qty
   FROM collection_cards cc
   JOIN scryfall_cards sc ON sc.id = cc.scryfall_id
   LEFT JOIN folders f ON f.id = cc.folder_id
@@ -769,6 +770,8 @@ export function getDeckById(id: number): DeckDetailRow | null {
     deck_id: id,
     scryfall_id: r.scryfall_id as string,
     quantity: r.dc_quantity as number,
+    foil: Boolean(r.foil),
+    collection_card_id: (r.collection_card_id as number | null) ?? null,
     is_commander: Boolean(r.is_commander),
     category: r.category as string | null,
     card: parseCard(r),
@@ -832,14 +835,17 @@ export function addCardToDeck(data: {
   scryfall_id: string;
   quantity: number;
   foil?: boolean;
+  collection_card_id?: number | null;
   is_commander: boolean;
   category?: string;
 }): DeckCard {
   return db.prepare(`
-    INSERT INTO deck_cards (deck_id, scryfall_id, quantity, foil, is_commander, category)
-    VALUES (@deck_id, @scryfall_id, @quantity, @foil, @is_commander, @category)
+    INSERT INTO deck_cards (deck_id, scryfall_id, quantity, foil, collection_card_id, is_commander, category)
+    VALUES (@deck_id, @scryfall_id, @quantity, @foil, @collection_card_id, @is_commander, @category)
     ON CONFLICT(deck_id, scryfall_id) DO UPDATE SET
       quantity = excluded.quantity,
+      foil = excluded.foil,
+      collection_card_id = excluded.collection_card_id,
       is_commander = excluded.is_commander,
       category = excluded.category,
       id = id
@@ -847,6 +853,7 @@ export function addCardToDeck(data: {
   `).get({
     ...data,
     foil: data.foil ? 1 : 0,
+    collection_card_id: data.collection_card_id ?? null,
     is_commander: data.is_commander ? 1 : 0,
     category: data.category ?? null,
   }) as DeckCard;

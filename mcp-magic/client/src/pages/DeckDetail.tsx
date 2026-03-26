@@ -80,11 +80,12 @@ export default function DeckDetail() {
   });
 
   const addMutation = useMutation({
-    mutationFn: ({ scryfallId, category, foil }: { scryfallId: string; category: string; foil?: boolean }) =>
-      addCardToDeck(deckId, { scryfall_id: scryfallId, category, foil }),
+    mutationFn: ({ scryfallId, category, foil, collection_card_id }: { scryfallId: string; category: string; foil?: boolean; collection_card_id?: number }) =>
+      addCardToDeck(deckId, { scryfall_id: scryfallId, category, foil, collection_card_id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
+      queryClient.invalidateQueries({ queryKey: ["collection"] });
     },
   });
 
@@ -93,6 +94,7 @@ export default function DeckDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
       queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
+      queryClient.invalidateQueries({ queryKey: ["collection"] });
     },
   });
 
@@ -332,7 +334,7 @@ export default function DeckDetail() {
                 <CollectionCardSearch
                   autoFocus
                   onSelect={(card: CollectionCard) => {
-                    addMutation.mutate({ scryfallId: card.scryfall_id, category: addCategory, foil: card.foil });
+                    addMutation.mutate({ scryfallId: card.scryfall_id, category: addCategory, foil: card.foil, collection_card_id: card.id });
                     setShowAddCard(false);
                   }}
                   placeholder="Search your collection..."
