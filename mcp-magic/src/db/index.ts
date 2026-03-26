@@ -361,6 +361,7 @@ export interface CollectionFilter {
   owner?: string;
   legal?: string;
   set_code?: string;
+  deck_id?: number | "none";
 }
 
 export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
@@ -398,6 +399,12 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
   if (filter.set_code) {
     sql += " AND LOWER(sc.set_code) = LOWER(?)";
     params.push(filter.set_code);
+  }
+  if (filter.deck_id === "none") {
+    sql += " AND NOT EXISTS (SELECT 1 FROM deck_cards dkf WHERE dkf.scryfall_id = cc.scryfall_id)";
+  } else if (filter.deck_id !== undefined) {
+    sql += " AND EXISTS (SELECT 1 FROM deck_cards dkf WHERE dkf.scryfall_id = cc.scryfall_id AND dkf.deck_id = ?)";
+    params.push(filter.deck_id);
   }
   sql += " ORDER BY sc.name";
 
