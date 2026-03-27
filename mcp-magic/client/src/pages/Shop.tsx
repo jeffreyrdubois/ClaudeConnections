@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Package, Search, ShoppingBag, Sparkles } from "lucide-react";
+import { Check, Package, Plus, Search, ShoppingBag, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { shopSearch, type ShopCard } from "../api/client";
+import AddCardModal from "../components/AddCardModal";
 import { HoverCardImage } from "../components/CardImage";
 import { ManaCost } from "../components/ManaSymbol";
 import { RARITY_COLORS } from "../types";
+import type { ScryfallCard } from "../types";
 
 export default function Shop() {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
+  const [addCard, setAddCard] = useState<ScryfallCard | null>(null);
 
   // Debounce: fire search 400 ms after user stops typing
   useEffect(() => {
@@ -77,11 +80,13 @@ export default function Shop() {
         {data?.cards && data.cards.length > 0 && (
           <ul className="divide-y divide-gray-700/30">
             {data.cards.map((card) => (
-              <ShopCardRow key={card.id} card={card} />
+              <ShopCardRow key={card.id} card={card} onAdd={() => setAddCard(card)} />
             ))}
           </ul>
         )}
       </div>
+
+      {addCard && <AddCardModal defaultCard={addCard} onClose={() => setAddCard(null)} />}
     </div>
   );
 }
@@ -95,7 +100,7 @@ function getThumb(card: ShopCard): string | null {
   return null;
 }
 
-function ShopCardRow({ card }: { card: ShopCard }) {
+function ShopCardRow({ card, onAdd }: { card: ShopCard; onAdd: () => void }) {
   const thumb = getThumb(card);
   const price = parseFloat(card.prices?.usd || "0");
   const priceFoil = parseFloat(card.prices?.usd_foil || "0");
@@ -143,6 +148,9 @@ function ShopCardRow({ card }: { card: ShopCard }) {
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
           <span className="text-xs text-gray-500">{card.set_name || card.set_code.toUpperCase()}</span>
+          {card.collector_number && (
+            <span className="text-xs text-gray-600">#{card.collector_number}</span>
+          )}
           <span className={`text-xs font-medium ${RARITY_COLORS[card.rarity || "common"]}`}>
             {card.rarity && card.rarity[0].toUpperCase() + card.rarity.slice(1)}
           </span>
@@ -153,10 +161,10 @@ function ShopCardRow({ card }: { card: ShopCard }) {
         {/* Type */}
         <div className="text-xs text-gray-600 mt-0.5 truncate">{card.type_line}</div>
 
-        {/* Ownership badge */}
-        <div className="mt-2">
+        {/* Ownership badge + add button */}
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
           {owned > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
+            <>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/40 text-green-400 border border-green-700/40">
                 <Check className="w-3 h-3" />
                 {owned} owned
@@ -170,12 +178,19 @@ function ShopCardRow({ card }: { card: ShopCard }) {
                   all in decks
                 </span>
               )}
-            </div>
+            </>
           ) : (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800/80 text-gray-500 border border-gray-700/50">
               Not in collection
             </span>
           )}
+          <button
+            onClick={onAdd}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            Add
+          </button>
         </div>
       </div>
     </li>
