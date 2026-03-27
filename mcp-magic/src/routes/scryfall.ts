@@ -15,9 +15,15 @@ scryfallRouter.get("/search", async (req, res) => {
 
   const page = parseInt((req.query.page as string) || "1");
 
+  // When a set filter is present, use unique=prints so all variants (different collector
+  // numbers, art treatments) are returned rather than one per oracle text. Also skip the
+  // local name-match cache since it doesn't understand Scryfall query syntax.
+  const hasSetFilter = /\bset:/i.test(q);
+  const uniqueMode = hasSetFilter ? "prints" : "cards";
+
   try {
-    // Check local cache first for quick autocomplete
-    if (page === 1) {
+    // Check local cache first for quick autocomplete (only when no set filter)
+    if (page === 1 && !hasSetFilter) {
       const cached = searchScryfallCache(q, 20);
       if (cached.length >= 5) {
         res.json({ cards: cached, total_cards: cached.length, has_more: false, source: "cache" });
@@ -26,7 +32,7 @@ scryfallRouter.get("/search", async (req, res) => {
     }
 
     // Fall back to Scryfall API
-    const result = await searchScryfall(q, { unique: "cards", order: "name", page });
+    const result = await searchScryfall(q, { unique: uniqueMode, order: "name", page });
     res.json({ ...result, source: "scryfall" });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
