@@ -167,6 +167,70 @@ collectionRouter.patch("/bulk", (req, res) => {
   }
 });
 
+// POST /api/collection/:id/replace
+// Swaps the scryfall card in place: keeps all metadata (folder, owner, condition, quantity)
+// and migrates all deck assignments to the new card.
+collectionRouter.post("/:id/replace", (req, res) => {
+  const id = parseInt(req.params.id);
+  const { scryfall_id } = req.body as { scryfall_id: string };
+
+  if (!scryfall_id) {
+    res.status(400).json({ error: "scryfall_id is required" });
+    return;
+  }
+
+  const existing = getCollectionCardById(id);
+  if (!existing) {
+    res.status(404).json({ error: "Collection entry not found" });
+    return;
+  }
+
+  if (existing.scryfall_id === scryfall_id) {
+    res.status(400).json({ error: "New card is the same as the current card" });
+    return;
+  }
+
+  const newCardInCache = db.prepare("SELECT id FROM scryfall_cards WHERE id = ?").get(scryfall_id) as { id: string } | undefined;
+  if (!newCardInCache) {
+    res.status(400).json({ error: "Card not found in local cache — search for it first to cache it." });
+    return;
+  }
+
+  try {
+    db.transaction(() => {
+      const oldId = existing.scryfall_id;
+
+      // Migrate every deck_cards row that uses the old scryfall_id.
+      // This covers both explicitly linked rows (collection_card_id = id) and legacy unlinked rows.
+      const affectedRows = db.prepare(
+        "SELECT id, deck_id, quantity FROM deck_cards WHERE scryfall_id = ?"
+      ).all(oldId) as { id: number; deck_id: number; quantity: number }[];
+
+      for (const dc of affectedRows) {
+        const conflict = db.prepare(
+          "SELECT id, quantity FROM deck_cards WHERE deck_id = ? AND scryfall_id = ? AND id != ?"
+        ).get(dc.deck_id, scryfall_id, dc.id) as { id: number; quantity: number } | undefined;
+
+        if (conflict) {
+          // A row for (deck_id, new_scryfall_id) already exists — merge and remove the old row
+          db.prepare("UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?").run(dc.quantity, conflict.id);
+          db.prepare("DELETE FROM deck_cards WHERE id = ?").run(dc.id);
+        } else {
+          // Simple swap
+          db.prepare("UPDATE deck_cards SET scryfall_id = ?, collection_card_id = NULL WHERE id = ?").run(scryfall_id, dc.id);
+        }
+      }
+
+      // Swap the scryfall_id on the collection entry itself
+      db.prepare("UPDATE collection_cards SET scryfall_id = ? WHERE id = ?").run(scryfall_id, id);
+    })();
+
+    res.json(getCollectionCardById(id));
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 // PATCH /api/collection/:id
 collectionRouter.patch("/:id", (req, res) => {
   const id = parseInt(req.params.id);

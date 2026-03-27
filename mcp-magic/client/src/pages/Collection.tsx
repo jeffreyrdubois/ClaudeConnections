@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X, ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Upload, Search, Filter, Trash2, Edit2, Layers, BarChart3, CheckSquare, X, ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronDown, ChevronUp, ArrowLeftRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getCollection, getFolders, getDecks, deleteCollectionCard, updateCollectionCard, bulkUpdateCards, bulkDeleteCollectionCards } from "../api/client";
@@ -7,6 +7,7 @@ import type { CollectionCard, Condition } from "../types";
 import { CONDITION_LABELS, RARITY_COLORS } from "../types";
 import AddCardModal from "../components/AddCardModal";
 import ImportModal from "../components/ImportModal";
+import ReplaceCardModal from "../components/ReplaceCardModal";
 import { ManaCost, ColorIdentity } from "../components/ManaSymbol";
 import { HoverCardImage } from "../components/CardImage";
 
@@ -39,6 +40,7 @@ export default function Collection() {
   const [filterDeck, setFilterDeck] = useState(() => searchParams.get("deck_id") || "");
   const [filterRarity, setFilterRarity] = useState(() => searchParams.get("rarity") || "");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [replacingCard, setReplacingCard] = useState<CollectionCard | null>(null);
   const [aggregate, setAggregate] = useState(false);
   const [showFilters, setShowFilters] = useState(() =>
     !!(searchParams.get("type") || searchParams.get("condition") || searchParams.get("owner") ||
@@ -593,6 +595,7 @@ export default function Collection() {
                     onEdit={() => setEditingId(card.id)}
                     onCancelEdit={() => setEditingId(null)}
                     onDelete={() => handleDelete(card)}
+                    onReplace={() => setReplacingCard(card)}
                     onUpdate={(data) => updateMutation.mutate({ id: card.id, data })}
                     folders={folders || []}
                   />
@@ -611,6 +614,7 @@ export default function Collection() {
                   selected={selectedIds.has(`${card.id}-${idx}`)}
                   onToggleSelect={() => toggleSelect(`${card.id}-${idx}`)}
                   onDelete={() => handleDelete(card)}
+                  onReplace={() => setReplacingCard(card)}
                   folders={folders || []}
                   decks={decks || []}
                   onUpdate={(data) => updateMutation.mutate({ id: card.id, data })}
@@ -623,6 +627,7 @@ export default function Collection() {
 
       {showAdd && <AddCardModal onClose={() => setShowAdd(false)} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+      {replacingCard && <ReplaceCardModal card={replacingCard} onClose={() => setReplacingCard(null)} />}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
@@ -678,7 +683,7 @@ export default function Collection() {
   );
 }
 
-function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onEdit, onCancelEdit, onDelete, onUpdate, folders }: {
+function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onEdit, onCancelEdit, onDelete, onReplace, onUpdate, folders }: {
   card: CollectionCard;
   aggregate: boolean;
   editing: boolean;
@@ -687,6 +692,7 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
   onEdit: () => void;
   onCancelEdit: () => void;
   onDelete: () => void;
+  onReplace: () => void;
   onUpdate: (data: Partial<CollectionCard>) => void;
   folders: Array<{ id: number; name: string }>;
 }) {
@@ -837,13 +843,13 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
           </div>
         ) : (
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={onEdit} className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-gray-300">
+            <button onClick={onEdit} title="Edit" className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-gray-300">
               <Edit2 className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={onDelete}
-              className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-red-400"
-            >
+            <button onClick={onReplace} title="Replace card" className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-blue-400">
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onDelete} title="Remove" className="btn-ghost p-1.5 rounded-md text-gray-500 hover:text-red-400">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -853,13 +859,14 @@ function CollectionRow({ card, aggregate, editing, selected, onToggleSelect, onE
   );
 }
 
-function MobileCardRow({ card, aggregate, selectMode, selected, onToggleSelect, onDelete, onUpdate, folders, decks }: {
+function MobileCardRow({ card, aggregate, selectMode, selected, onToggleSelect, onDelete, onReplace, onUpdate, folders, decks }: {
   card: CollectionCard;
   aggregate: boolean;
   selectMode: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
+  onReplace: () => void;
   onUpdate: (data: Partial<CollectionCard>) => void;
   folders: Array<{ id: number; name: string }>;
   decks: Array<{ id: number; name: string }>;
@@ -1007,12 +1014,18 @@ function MobileCardRow({ card, aggregate, selectMode, selected, onToggleSelect, 
               </div>
             </>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setEditing(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 text-gray-300 border border-gray-700 hover:text-white transition-colors flex-1 justify-center"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button
+                onClick={onReplace}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 text-blue-400 border border-gray-700 hover:bg-blue-900/20 transition-colors flex-1 justify-center"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" /> Replace
               </button>
               <button
                 onClick={onDelete}
