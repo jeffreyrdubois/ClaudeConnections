@@ -14,10 +14,11 @@ interface ReplaceCardModalProps {
 
 export default function ReplaceCardModal({ card, onClose }: ReplaceCardModalProps) {
   const [newCard, setNewCard] = useState<ScryfallCard | null>(null);
+  const [replaceQty, setReplaceQty] = useState(1);
   const queryClient = useQueryClient();
 
   const replaceMutation = useMutation({
-    mutationFn: () => replaceCollectionCard(card.id, newCard!.id),
+    mutationFn: () => replaceCollectionCard(card.id, newCard!.id, replaceQty),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["collection"] });
       queryClient.invalidateQueries({ queryKey: ["collection-stats"] });
@@ -98,6 +99,22 @@ export default function ReplaceCardModal({ card, onClose }: ReplaceCardModalProp
             </div>
           </div>
 
+          {/* Quantity selector (only shown when multiple copies exist) */}
+          {card.quantity > 1 && (
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-medium text-gray-400 shrink-0">How many to replace?</label>
+              <input
+                type="number"
+                min={1}
+                max={card.quantity}
+                value={replaceQty}
+                onChange={(e) => setReplaceQty(Math.max(1, Math.min(card.quantity, parseInt(e.target.value) || 1)))}
+                className="input w-20 text-center"
+              />
+              <span className="text-xs text-gray-500">of {card.quantity}</span>
+            </div>
+          )}
+
           {/* Search */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">Search for replacement</label>
@@ -106,7 +123,10 @@ export default function ReplaceCardModal({ card, onClose }: ReplaceCardModalProp
 
           {/* Info */}
           <div className="text-xs text-gray-500 bg-gray-800/40 rounded-lg p-3">
-            All metadata (folder, owner, condition, quantity) will be kept. Deck assignments will be updated to the new card.
+            {replaceQty < card.quantity
+              ? `${replaceQty} cop${replaceQty === 1 ? "y" : "ies"} will be replaced with the new card. The remaining ${card.quantity - replaceQty} will stay as-is.`
+              : "All metadata (folder, owner, condition) will be kept. Deck assignments will be updated to the new card."
+            }
           </div>
 
           {replaceMutation.isError && (
