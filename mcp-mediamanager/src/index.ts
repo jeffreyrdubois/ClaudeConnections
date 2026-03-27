@@ -2,20 +2,84 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
 
 // ── Config ────────────────────────────────────────────────────────────────────
+// Config is read from env vars first, then persisted to /config/config.json so
+// that settings survive container recreation (e.g. Unraid auto-updates).
 
-const SONARR_URL = process.env.SONARR_URL?.replace(/\/$/, "") ?? "";
-const SONARR_API_KEY = process.env.SONARR_API_KEY ?? "";
-const RADARR_URL = process.env.RADARR_URL?.replace(/\/$/, "") ?? "";
-const RADARR_API_KEY = process.env.RADARR_API_KEY ?? "";
-const TAUTULLI_URL = process.env.TAUTULLI_URL?.replace(/\/$/, "") ?? "";
-const TAUTULLI_API_KEY = process.env.TAUTULLI_API_KEY ?? "";
-const OVERSEERR_URL = process.env.OVERSEERR_URL?.replace(/\/$/, "") ?? "";
-const OVERSEERR_API_KEY = process.env.OVERSEERR_API_KEY ?? "";
-const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
-const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
+const CONFIG_DIR = process.env.CONFIG_DIR || "/config";
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+
+interface SavedConfig {
+  sonarrUrl?: string;
+  sonarrApiKey?: string;
+  radarrUrl?: string;
+  radarrApiKey?: string;
+  tautulliUrl?: string;
+  tautulliApiKey?: string;
+  overseerrUrl?: string;
+  overseerrApiKey?: string;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+}
+
+function loadConfig(): SavedConfig {
+  const fromEnv: SavedConfig = {
+    sonarrUrl: process.env.SONARR_URL || undefined,
+    sonarrApiKey: process.env.SONARR_API_KEY || undefined,
+    radarrUrl: process.env.RADARR_URL || undefined,
+    radarrApiKey: process.env.RADARR_API_KEY || undefined,
+    tautulliUrl: process.env.TAUTULLI_URL || undefined,
+    tautulliApiKey: process.env.TAUTULLI_API_KEY || undefined,
+    overseerrUrl: process.env.OVERSEERR_URL || undefined,
+    overseerrApiKey: process.env.OVERSEERR_API_KEY || undefined,
+    oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
+    oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
+  };
+
+  // If any env vars are set, persist the full config to disk so future
+  // restarts work even if the container is recreated without env vars.
+  const hasEnvConfig = Object.values(fromEnv).some(Boolean);
+  if (hasEnvConfig) {
+    try {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      const toSave: SavedConfig = {};
+      for (const [k, v] of Object.entries(fromEnv)) {
+        if (v) (toSave as any)[k] = v;
+      }
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(toSave, null, 2), { mode: 0o600 });
+      console.log(`Config saved to ${CONFIG_FILE}`);
+    } catch (e) {
+      console.warn("Warning: Could not save config to file:", e);
+    }
+    return fromEnv;
+  }
+
+  // No env vars — try the persisted config file.
+  try {
+    const saved: SavedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    console.log(`Config loaded from ${CONFIG_FILE}`);
+    return saved;
+  } catch {
+    return fromEnv;
+  }
+}
+
+const config = loadConfig();
+
+const SONARR_URL = (config.sonarrUrl ?? "").replace(/\/$/, "");
+const SONARR_API_KEY = config.sonarrApiKey ?? "";
+const RADARR_URL = (config.radarrUrl ?? "").replace(/\/$/, "");
+const RADARR_API_KEY = config.radarrApiKey ?? "";
+const TAUTULLI_URL = (config.tautulliUrl ?? "").replace(/\/$/, "");
+const TAUTULLI_API_KEY = config.tautulliApiKey ?? "";
+const OVERSEERR_URL = (config.overseerrUrl ?? "").replace(/\/$/, "");
+const OVERSEERR_API_KEY = config.overseerrApiKey ?? "";
+const OAUTH_CLIENT_ID = config.oauthClientId;
+const OAUTH_CLIENT_SECRET = config.oauthClientSecret;
 const PORT = parseInt(process.env.PORT || "3000");
 
 // ── HTTP Helpers ──────────────────────────────────────────────────────────────
