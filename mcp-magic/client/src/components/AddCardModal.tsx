@@ -58,7 +58,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
         setFoil(false);
         setCondition("NM");
         setPurchasePrice("");
-        setOwner("");
+        setOwner(user?.username || "");
         setSuccess(null);
       }, 1500);
     } catch (e: unknown) {
