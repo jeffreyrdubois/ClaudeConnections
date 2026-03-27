@@ -241,26 +241,25 @@ export default function Collection() {
     let base: CollectionCard[];
 
     if (aggregate) {
-      if (groupBy.length === 0) {
-        base = cards;
-      } else {
-        const groups = new Map<string, CollectionCard>();
-        for (const card of cards) {
-          const key = [
-            card.scryfall_id,
-            groupBy.includes("Owner") ? (card.owner || "") : "",
-            groupBy.includes("Folder") ? (card.folder_id ?? "") : "",
-            groupBy.includes("Set") ? card.set_code : "",
-          ].join("|");
-          if (groups.has(key)) {
-            const ex = groups.get(key)!;
-            groups.set(key, { ...ex, quantity: ex.quantity + card.quantity });
-          } else {
-            groups.set(key, { ...card });
-          }
+      // Always merge rows that represent the same physical card entry.
+      // GroupBy options collapse additional dimensions (owner, folder, or set/printing).
+      const groups = new Map<string, CollectionCard>();
+      for (const card of cards) {
+        const key = [
+          groupBy.includes("Set") ? card.name : card.scryfall_id, // Set: merge same name across printings
+          card.condition,
+          card.foil ? 1 : 0,
+          groupBy.includes("Owner") ? "" : (card.owner || ""),   // Owner: collapse across owners
+          groupBy.includes("Folder") ? "" : (card.folder_id ?? ""), // Folder: collapse across folders
+        ].join("|");
+        if (groups.has(key)) {
+          const ex = groups.get(key)!;
+          groups.set(key, { ...ex, quantity: ex.quantity + card.quantity });
+        } else {
+          groups.set(key, { ...card });
         }
-        base = [...groups.values()];
       }
+      base = [...groups.values()];
     } else {
       // In individual mode, only the first `assigned_qty` copies are actually assigned to a deck.
       // Clear deck_name/deck_id for the remaining rows so they aren't shown as in-use.
