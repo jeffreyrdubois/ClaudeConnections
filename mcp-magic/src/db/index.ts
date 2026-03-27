@@ -454,6 +454,13 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
     }
   }
 
+  // When filtering by a specific deck, the SQL net is cast by scryfall_id — it can return more
+  // collection entries than are actually in the deck (e.g. 5 Mountains when only 4 are assigned).
+  // The distribution step above already cleared deck_id on those excess entries; now drop them.
+  if (typeof filter.deck_id === "number") {
+    result = result.filter((r) => r.deck_id === filter.deck_id);
+  }
+
   return result;
 }
 
