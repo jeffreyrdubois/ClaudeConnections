@@ -72,16 +72,16 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-xl bg-surface-card rounded-2xl shadow-2xl border border-gray-700">
+      <div className="w-full max-w-xl bg-surface-card rounded-2xl shadow-2xl border border-gray-700 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-700">
+        <div className="flex items-center justify-between p-5 border-b border-gray-700 shrink-0">
           <h2 className="text-lg font-semibold text-white">Add Card to Collection</h2>
           <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto">
           {/* Card search */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">Card Name</label>
@@ -182,7 +182,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700">
+        <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700 shrink-0">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
           <button
             onClick={handleSave}
