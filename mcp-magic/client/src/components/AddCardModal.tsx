@@ -28,6 +28,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [searchKey, setSearchKey] = useState(0);
 
   const queryClient = useQueryClient();
   const { data: folders } = useQuery({ queryKey: ["folders"], queryFn: getFolders });
@@ -60,6 +61,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
         setPurchasePrice("");
         setOwner(user?.username || "");
         setSuccess(null);
+        setSearchKey((k) => k + 1);
       }, 1500);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to add card");
@@ -85,7 +87,7 @@ export default function AddCardModal({ onClose, defaultCard, defaultFolderId }: 
           {/* Card search */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">Card Name</label>
-            <CardSearch onSelect={setSelectedCard} placeholder="Search Scryfall..." showSetFilter />
+            <CardSearch key={searchKey} onSelect={setSelectedCard} placeholder="Search Scryfall..." showSetFilter autoFocus />
           </div>
 
           {/* Selected card preview */}

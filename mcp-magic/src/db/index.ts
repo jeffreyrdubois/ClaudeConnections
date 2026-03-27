@@ -454,6 +454,13 @@ export function getCollection(filter: CollectionFilter = {}): CollectionRow[] {
     }
   }
 
+  // When filtering by a specific deck, the SQL net is cast by scryfall_id — it can return more
+  // collection entries than are actually in the deck (e.g. 5 Mountains when only 4 are assigned).
+  // The distribution step above already cleared deck_id on those excess entries; now drop them.
+  if (typeof filter.deck_id === "number") {
+    result = result.filter((r) => r.deck_id === filter.deck_id);
+  }
+
   return result;
 }
 
@@ -1056,15 +1063,25 @@ export function bulkUpdateCollectionCards(ids: number[], updates: {
       const deck_id = updates.deck_id;
       const placeholders = ids.map(() => "?").join(",");
       const cards = db.prepare(`SELECT scryfall_id FROM collection_cards WHERE id IN (${placeholders})`).all(...ids) as { scryfall_id: string }[];
-      const insertStmt = db.prepare("INSERT OR IGNORE INTO deck_cards (deck_id, scryfall_id, quantity) VALUES (?, ?, 1)");
+
+      // Group selected collection entries by scryfall_id so that selecting 5 Mountains
+      // produces a deck_cards row with quantity=5, not just 1.
+      const countByScryfallId = new Map<string, number>();
       for (const card of cards) {
-        const existing = db.prepare("SELECT deck_id FROM deck_cards WHERE scryfall_id = ?").get(card.scryfall_id) as { deck_id: number } | undefined;
+        countByScryfallId.set(card.scryfall_id, (countByScryfallId.get(card.scryfall_id) ?? 0) + 1);
+      }
+
+      for (const [scryfall_id, count] of countByScryfallId) {
+        const existing = db.prepare(
+          "SELECT id, quantity FROM deck_cards WHERE deck_id = ? AND scryfall_id = ?"
+        ).get(deck_id, scryfall_id) as { id: number; quantity: number } | undefined;
+
         if (existing) {
-          deck_skipped++;
+          db.prepare("UPDATE deck_cards SET quantity = ? WHERE id = ?").run(existing.quantity + count, existing.id);
         } else {
-          insertStmt.run(deck_id, card.scryfall_id);
-          deck_added++;
+          db.prepare("INSERT INTO deck_cards (deck_id, scryfall_id, quantity) VALUES (?, ?, ?)").run(deck_id, scryfall_id, count);
         }
+        deck_added += count;
       }
     }
 

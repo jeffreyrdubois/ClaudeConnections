@@ -9,9 +9,10 @@ interface CardSearchProps {
   placeholder?: string;
   className?: string;
   showSetFilter?: boolean;
+  autoFocus?: boolean;
 }
 
-export default function CardSearch({ onSelect, placeholder = "Search for a card...", className = "", showSetFilter = false }: CardSearchProps) {
+export default function CardSearch({ onSelect, placeholder = "Search for a card...", className = "", showSetFilter = false, autoFocus = false }: CardSearchProps) {
   const [query, setQuery] = useState("");
   const [setFilter, setSetFilter] = useState("");
   const [results, setResults] = useState<ScryfallCard[]>([]);
@@ -19,6 +20,11 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
   const [open, setOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -63,6 +69,7 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
+            ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
