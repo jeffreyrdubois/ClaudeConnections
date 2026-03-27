@@ -126,6 +126,9 @@ export default function CardSearch({ onSelect, placeholder = "Search for a card.
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <span className="text-xs text-gray-400">{card.set_name || card.set_code?.toUpperCase()}</span>
+                  {card.collector_number && (
+                    <span className="text-xs text-gray-600">#{card.collector_number}</span>
+                  )}
                   <ManaCost cost={card.mana_cost} size="sm" />
                 </div>
                 <div className="text-xs text-gray-500 truncate">{card.type_line}</div>
