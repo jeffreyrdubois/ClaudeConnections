@@ -2,19 +2,77 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import * as ynab from "ynab";
 import { z } from "zod";
 
 // ── Config ────────────────────────────────────────────────────────────────────
+// Config is read from env vars first, then persisted to /config/config.json so
+// that settings survive container recreation (e.g. Unraid auto-updates).
 
-const YNAB_API_TOKEN = process.env.YNAB_API_TOKEN;
-const YNAB_BUDGET_ID = process.env.YNAB_BUDGET_ID || "last-used";
-const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
-const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
+const CONFIG_DIR = process.env.CONFIG_DIR || "/config";
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+
+interface SavedConfig {
+  ynabApiToken?: string;
+  ynabBudgetId?: string;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+}
+
+function loadConfig(): SavedConfig {
+  const fromEnv: SavedConfig = {
+    ynabApiToken: process.env.YNAB_API_TOKEN || undefined,
+    ynabBudgetId: process.env.YNAB_BUDGET_ID || undefined,
+    oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
+    oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
+  };
+
+  // If env vars supply the token, persist them to disk so future restarts work
+  // even if the container is recreated without env vars (e.g. Unraid updates).
+  if (fromEnv.ynabApiToken) {
+    try {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      const toSave: SavedConfig = {};
+      if (fromEnv.ynabApiToken) toSave.ynabApiToken = fromEnv.ynabApiToken;
+      if (fromEnv.ynabBudgetId) toSave.ynabBudgetId = fromEnv.ynabBudgetId;
+      if (fromEnv.oauthClientId) toSave.oauthClientId = fromEnv.oauthClientId;
+      if (fromEnv.oauthClientSecret) toSave.oauthClientSecret = fromEnv.oauthClientSecret;
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(toSave, null, 2), { mode: 0o600 });
+      console.log(`Config saved to ${CONFIG_FILE}`);
+    } catch (e) {
+      console.warn("Warning: Could not save config to file:", e);
+    }
+    return fromEnv;
+  }
+
+  // No token in env — try the persisted config file.
+  try {
+    const saved: SavedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    console.log(`Config loaded from ${CONFIG_FILE}`);
+    return {
+      ynabApiToken: saved.ynabApiToken,
+      ynabBudgetId: saved.ynabBudgetId,
+      oauthClientId: saved.oauthClientId,
+      oauthClientSecret: saved.oauthClientSecret,
+    };
+  } catch {
+    // No file yet — env vars were also empty.
+    return fromEnv;
+  }
+}
+
+const config = loadConfig();
+
+const YNAB_API_TOKEN = config.ynabApiToken;
+const YNAB_BUDGET_ID = config.ynabBudgetId || "last-used";
+const OAUTH_CLIENT_ID = config.oauthClientId;
+const OAUTH_CLIENT_SECRET = config.oauthClientSecret;
 const PORT = parseInt(process.env.PORT || "3000");
 
 if (!YNAB_API_TOKEN) {
-  console.error("ERROR: YNAB_API_TOKEN environment variable is required");
+  console.error("ERROR: YNAB_API_TOKEN is required. Set it via the Unraid template or YNAB_API_TOKEN env var.");
   process.exit(1);
 }
 
