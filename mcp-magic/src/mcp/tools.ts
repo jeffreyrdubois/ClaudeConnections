@@ -31,16 +31,19 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "search_collection",
-    "Search cards in the Magic collection. Filter by name, colors (W/U/B/R/G), card type, folder, foil status, or condition.",
+    "Search cards in the Magic collection. Filter by name, owner, colors (W/U/B/R/G), card type, folder, foil status, condition, or rarity. Use owner='Jeffrey' or owner='Abby' to scope results to one person's cards.",
     {
       query: z.string().optional().describe("Partial card name to search for"),
+      owner: z.string().optional().describe("Filter by card owner ('Jeffrey' or 'Abby'). Omit to see all cards."),
       colors: z.array(z.enum(["W", "U", "B", "R", "G", "C"])).optional().describe("Filter by color identity (W=White, U=Blue, B=Black, R=Red, G=Green, C=Colorless)"),
       type: z.string().optional().describe("Filter by card type (e.g., 'Creature', 'Instant', 'Land')"),
+      rarity: z.enum(["common", "uncommon", "rare", "mythic"]).optional().describe("Filter by rarity"),
       folder: z.string().optional().describe("Folder name to filter by"),
       foil: z.boolean().optional().describe("Filter for foil or non-foil only"),
       condition: z.enum(["NM", "LP", "MP", "HP", "DMG"]).optional().describe("Filter by card condition"),
+      deck_id: z.enum(["none"]).optional().describe("Pass 'none' to only show cards not assigned to any deck"),
     },
-    async ({ query, colors, type, folder, foil, condition }) => {
+    async ({ query, owner, colors, type, rarity, folder, foil, condition, deck_id }) => {
       try {
         let folder_id: number | null | undefined = undefined;
         if (folder) {
@@ -50,7 +53,7 @@ export function createMcpServer(): McpServer {
           folder_id = f.id;
         }
 
-        const cards = getCollection({ search: query, colors, type, foil, condition, folder_id });
+        const cards = getCollection({ search: query, owner, colors, type, rarity, foil, condition, folder_id, deck_id });
         const summary = cards.map((c) => ({
           id: c.id,
           name: c.name,
@@ -58,9 +61,12 @@ export function createMcpServer(): McpServer {
           quantity: c.quantity,
           foil: c.foil,
           condition: c.condition,
+          owner: c.owner,
           folder: c.folder_name,
+          deck: c.deck_name,
           mana_cost: c.mana_cost,
           type_line: c.type_line,
+          rarity: c.rarity,
           price_usd: c.foil ? (c.prices?.usd_foil || c.prices?.usd || "N/A") : (c.prices?.usd || "N/A"),
           color_identity: c.color_identity,
         }));
@@ -73,14 +79,15 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "get_collection_value",
-    "Get the total estimated market value of the collection or a specific folder.",
+    "Get the total estimated market value of the collection, optionally scoped to one owner or a specific folder.",
     {
+      owner: z.string().optional().describe("Owner to scope the value to ('Jeffrey' or 'Abby'). Omit for combined total."),
       folder: z.string().optional().describe("Folder name to get value for (omit for full collection)"),
     },
-    async ({ folder }) => {
+    async ({ owner, folder }) => {
       try {
         let folder_id: number | null | undefined = undefined;
-        let folderName = "entire collection";
+        let folderName = owner ? `${owner}'s collection` : "entire collection";
 
         if (folder) {
           const folders = getFolders();
@@ -90,11 +97,14 @@ export function createMcpServer(): McpServer {
           folderName = f.name;
         }
 
-        const value = getTotalCollectionValue(folder_id);
-        const stats = getCollectionStats();
+        const stats = getCollectionStats({ owner, folder_id: folder_id });
+        const totalValue = owner || folder_id !== undefined
+          ? stats.topByValue.reduce((s, c) => s + parseFloat(c.prices?.usd || "0") * c.qty, 0)
+          : getTotalCollectionValue(folder_id);
+
         return ok({
           scope: folderName,
-          total_value: fmt(value),
+          total_value: fmt(totalValue),
           total_cards: stats.totals.total_quantity,
           unique_cards: stats.totals.unique_cards,
         });
@@ -167,6 +177,7 @@ export function createMcpServer(): McpServer {
     "Add one or more copies of a card to the collection. Fetches card data from Scryfall automatically.",
     {
       card_name: z.string().describe("Card name to add"),
+      owner: z.string().optional().describe("Owner of the card ('Jeffrey' or 'Abby')"),
       quantity: z.number().int().min(1).default(1).describe("Number of copies to add"),
       foil: z.boolean().default(false).describe("Whether the card is foil"),
       condition: z.enum(["NM", "LP", "MP", "HP", "DMG"]).default("NM").describe("Card condition"),
@@ -175,7 +186,7 @@ export function createMcpServer(): McpServer {
       language: z.string().default("en").describe("Card language (e.g., 'en', 'jp', 'de')"),
       purchase_price: z.number().optional().describe("Price you paid (optional)"),
     },
-    async ({ card_name, quantity, foil, condition, set_code, folder, language, purchase_price }) => {
+    async ({ card_name, owner, quantity, foil, condition, set_code, folder, language, purchase_price }) => {
       try {
         const card = await getCardByName(card_name, set_code);
         if (!card) return err(`Card "${card_name}" not found on Scryfall`);
@@ -197,6 +208,7 @@ export function createMcpServer(): McpServer {
           condition,
           language,
           purchase_price,
+          owner: owner ?? null,
         });
 
         return ok({
@@ -232,11 +244,13 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "get_collection_stats",
-    "Get comprehensive statistics for the entire collection: value, card counts, rarity breakdown, color distribution, top valuable cards.",
-    {},
-    async () => {
+    "Get comprehensive statistics for the collection: value, card counts, rarity breakdown, color distribution, top valuable cards. Can be scoped to one owner.",
+    {
+      owner: z.string().optional().describe("Owner to scope stats to ('Jeffrey' or 'Abby'). Omit for combined stats."),
+    },
+    async ({ owner }) => {
       try {
-        const stats = getCollectionStats();
+        const stats = getCollectionStats({ owner });
         const totalValue = getTotalCollectionValue();
 
         const colorNames: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green", C: "Colorless" };
@@ -344,15 +358,21 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "list_decks",
-    "List all Commander decks with card counts and estimated values.",
-    {},
-    async () => {
+    "List all Commander decks with card counts, owners, and commanders. Use owner filter to see only one person's decks.",
+    {
+      owner: z.string().optional().describe("Filter decks by owner ('Jeffrey' or 'Abby')"),
+    },
+    async ({ owner }) => {
       try {
-        const decks = getDecks();
+        let decks = getDecks();
+        if (owner) {
+          decks = decks.filter((d) => d.owner?.toLowerCase() === owner.toLowerCase());
+        }
         return ok({
           decks: decks.map((d) => ({
             id: d.id,
             name: d.name,
+            owner: d.owner,
             commander: d.commander_name,
             partner: d.partner_name,
             color_identity: d.commander_colors,
@@ -418,11 +438,12 @@ export function createMcpServer(): McpServer {
     "Create a new Commander deck. Provide a commander name to look it up on Scryfall.",
     {
       name: z.string().describe("Deck name"),
+      owner: z.string().optional().describe("Deck owner ('Jeffrey' or 'Abby')"),
       commander_name: z.string().describe("Commander card name"),
       partner_name: z.string().optional().describe("Partner commander name (if applicable)"),
       description: z.string().optional().describe("Deck description or strategy notes"),
     },
-    async ({ name, commander_name, partner_name, description }) => {
+    async ({ name, owner, commander_name, partner_name, description }) => {
       try {
         const commander = await getCardByName(commander_name);
         if (!commander) return err(`Commander "${commander_name}" not found on Scryfall`);
@@ -444,6 +465,7 @@ export function createMcpServer(): McpServer {
           commander_scryfall_id: commander.id,
           partner_scryfall_id: partnerCard?.id,
           description: description?.trim(),
+          owner: owner?.trim(),
         });
 
         addCardToDeck({ deck_id: deck.id, scryfall_id: commander.id, quantity: 1, is_commander: true, category: "Commander" });
@@ -694,14 +716,18 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "get_unassigned_cards",
-    "Get all cards in the collection that are not assigned to any deck. Useful for finding cards to build a new deck with.",
+    "Get all cards not assigned to any deck. Filter by owner to see only one person's available cards. Useful for finding cards to add to an existing deck.",
     {
+      owner: z.string().optional().describe("Owner to filter by ('Jeffrey' or 'Abby'). Omit to see all unassigned cards regardless of owner."),
       color_identity: z.array(z.enum(["W", "U", "B", "R", "G", "C"])).optional().describe("Filter to cards that fit within a specific color identity"),
       type: z.string().optional().describe("Filter by card type"),
     },
-    async ({ color_identity, type }) => {
+    async ({ owner, color_identity, type }) => {
       try {
         let cards = getUnassignedCards(color_identity);
+        if (owner) {
+          cards = cards.filter((c) => c.owner?.toLowerCase() === owner.toLowerCase());
+        }
         if (type) {
           cards = cards.filter((c) => c.type_line?.toLowerCase().includes(type.toLowerCase()));
         }
@@ -714,6 +740,7 @@ export function createMcpServer(): McpServer {
             mana_cost: c.mana_cost,
             color_identity: c.color_identity,
             quantity: c.quantity,
+            owner: c.owner,
             folder: c.folder_name,
             price_usd: c.prices?.usd || "N/A",
           })),
@@ -726,11 +753,12 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "build_deck_from_collection",
-    "Suggest a Commander deck built from cards currently in the collection that are not assigned to any deck. Returns the unassigned cards that fit within the commander's color identity.",
+    "Suggest a Commander deck built from one owner's unassigned cards. Returns available cards that fit within the commander's color identity, organized by type.",
     {
       commander_name: z.string().describe("Proposed commander name"),
+      owner: z.string().optional().describe("Owner whose unassigned cards to draw from ('Jeffrey' or 'Abby'). Omit to consider all unassigned cards."),
     },
-    async ({ commander_name }) => {
+    async ({ commander_name, owner }) => {
       try {
         const commander = await getCardByName(commander_name);
         if (!commander) return err(`Commander "${commander_name}" not found on Scryfall`);
@@ -739,7 +767,10 @@ export function createMcpServer(): McpServer {
         }
 
         const colorIdentity = commander.color_identity;
-        const unassigned = getUnassignedCards(colorIdentity.length > 0 ? colorIdentity : undefined);
+        let unassigned = getUnassignedCards(colorIdentity.length > 0 ? colorIdentity : undefined);
+        if (owner) {
+          unassigned = unassigned.filter((c) => c.owner?.toLowerCase() === owner.toLowerCase());
+        }
 
         // Categorize cards for deck building suggestions
         const lands = unassigned.filter((c) => c.type_line?.includes("Land"));
@@ -769,6 +800,123 @@ export function createMcpServer(): McpServer {
           },
           recommendation: `Found ${unassigned.length} unassigned cards fitting ${commander.name}'s ${colorIdentity.join("")} color identity. Create a deck with this commander and then add cards from these categories to build your 99.`,
         });
+      } catch (e: unknown) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "suggest_deck_upgrades",
+    "Analyze an existing deck and suggest upgrades from a specific owner's unassigned collection cards. Optionally provide an opponent's deck to tailor suggestions toward countering their strategy. This powers questions like 'what cards from my collection would strengthen my Avatar deck against Abby's Dragon deck?'",
+    {
+      deck_name: z.string().describe("Name of the deck to upgrade (partial match)"),
+      owner: z.string().describe("Owner whose unassigned cards to draw from ('Jeffrey' or 'Abby')"),
+      opponent_deck: z.string().optional().describe("Opponent's deck name to counter (partial match). Providing this focuses suggestions on strategic matchup."),
+    },
+    async ({ deck_name, owner, opponent_deck }) => {
+      try {
+        const decks = getDecks();
+        const myDeck = decks.find((d) => d.name.toLowerCase().includes(deck_name.toLowerCase()));
+        if (!myDeck) return err(`Deck "${deck_name}" not found`);
+
+        const myDeckDetail = getDeckById(myDeck.id)!;
+        const myDeckStats = getDeckStats(myDeck.id)!;
+
+        // Get color identity of the deck from the commander
+        const colorIdentity = myDeck.commander_colors ?? [];
+
+        // Get owner's unassigned cards that fit the deck's color identity
+        let available = getUnassignedCards(colorIdentity.length > 0 ? colorIdentity : undefined);
+        available = available.filter((c) => c.owner?.toLowerCase() === owner.toLowerCase());
+
+        // Cards already in the deck (to avoid duplicates)
+        const inDeckNames = new Set(myDeckDetail.cards.map((c) => c.card.name.toLowerCase()));
+        available = available.filter((c) => !inDeckNames.has(c.name.toLowerCase()));
+
+        // Categorize available cards
+        const categorize = (cards: typeof available) => cards.map((c) => ({
+          name: c.name,
+          mana_cost: c.mana_cost,
+          cmc: c.cmc,
+          type_line: c.type_line,
+          oracle_text: c.oracle_text,
+          color_identity: c.color_identity,
+          quantity: c.quantity,
+          price_usd: c.prices?.usd || "N/A",
+        }));
+
+        const lands = available.filter((c) => c.type_line?.includes("Land"));
+        const creatures = available.filter((c) => c.type_line?.includes("Creature") && !c.type_line?.includes("Land"));
+        const instants = available.filter((c) => c.type_line?.includes("Instant"));
+        const sorceries = available.filter((c) => c.type_line?.includes("Sorcery"));
+        const artifacts = available.filter((c) => c.type_line?.includes("Artifact") && !c.type_line?.includes("Creature"));
+        const enchantments = available.filter((c) => c.type_line?.includes("Enchantment") && !c.type_line?.includes("Creature"));
+        const planeswalkers = available.filter((c) => c.type_line?.includes("Planeswalker"));
+
+        const result: Record<string, unknown> = {
+          my_deck: {
+            name: myDeck.name,
+            owner: myDeck.owner,
+            commander: myDeck.commander_name,
+            color_identity: colorIdentity,
+            card_count: myDeckStats.card_count,
+            land_count: myDeckStats.land_count,
+            type_breakdown: myDeckStats.type_breakdown,
+            current_cards: myDeckDetail.cards.map((c) => ({
+              name: c.card.name,
+              type_line: c.card.type_line,
+              mana_cost: c.card.mana_cost,
+              category: c.category,
+            })),
+          },
+          available_upgrades: {
+            total_available: available.length,
+            lands: { count: lands.length, cards: categorize(lands) },
+            creatures: { count: creatures.length, cards: categorize(creatures) },
+            instants: { count: instants.length, cards: categorize(instants) },
+            sorceries: { count: sorceries.length, cards: categorize(sorceries) },
+            artifacts: { count: artifacts.length, cards: categorize(artifacts) },
+            enchantments: { count: enchantments.length, cards: categorize(enchantments) },
+            planeswalkers: { count: planeswalkers.length, cards: categorize(planeswalkers) },
+          },
+        };
+
+        // If an opponent deck is specified, include its full details for strategic analysis
+        if (opponent_deck) {
+          const oppDeck = decks.find((d) => d.name.toLowerCase().includes(opponent_deck.toLowerCase()));
+          if (oppDeck) {
+            const oppDetail = getDeckById(oppDeck.id)!;
+            const oppStats = getDeckStats(oppDeck.id)!;
+            result.opponent_deck = {
+              name: oppDeck.name,
+              owner: oppDeck.owner,
+              commander: oppDeck.commander_name,
+              color_identity: oppDeck.commander_colors,
+              card_count: oppStats.card_count,
+              type_breakdown: oppStats.type_breakdown,
+              color_distribution: oppStats.color_distribution,
+              avg_cmc: (() => {
+                const nl = oppDetail.cards.filter((c) => !c.is_commander && !c.card.type_line?.toLowerCase().includes("land"));
+                const tot = nl.reduce((s, c) => s + c.card.cmc * c.quantity, 0);
+                const qty = nl.reduce((s, c) => s + c.quantity, 0);
+                return qty ? (tot / qty).toFixed(2) : "0";
+              })(),
+              cards: oppDetail.cards.map((c) => ({
+                name: c.card.name,
+                type_line: c.card.type_line,
+                mana_cost: c.card.mana_cost,
+                oracle_text: c.card.oracle_text,
+                category: c.category,
+              })),
+            };
+            result.context = `Use the opponent deck details and available_upgrades to recommend specific cards that address strategic gaps or counter the opponent's threats. Consider removal for their key creatures, interaction for their win conditions, and synergy with the commander.`;
+          } else {
+            result.opponent_deck_warning = `Deck "${opponent_deck}" not found — proceeding with general upgrade suggestions.`;
+          }
+        }
+
+        return ok(result);
       } catch (e: unknown) {
         return err(e instanceof Error ? e.message : String(e));
       }
