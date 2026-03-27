@@ -1,6 +1,7 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
+import fs from "fs";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -13,9 +14,46 @@ import { importRouter } from "./routes/import.js";
 import { scryfallRouter } from "./routes/scryfall.js";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
+// OAuth settings are persisted to /data/config.json (the existing data volume)
+// so they survive container recreation (e.g. Unraid auto-updates).
 
-const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID;
-const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
+const DATA_DIR = process.env.DATA_DIR || "/data";
+const CONFIG_FILE = path.join(DATA_DIR, "config.json");
+
+interface SavedConfig {
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+}
+
+function loadConfig(): SavedConfig {
+  const fromEnv: SavedConfig = {
+    oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
+    oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
+  };
+
+  if (fromEnv.oauthClientId || fromEnv.oauthClientSecret) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(fromEnv, null, 2), { mode: 0o600 });
+      console.log(`Config saved to ${CONFIG_FILE}`);
+    } catch (e) {
+      console.warn("Warning: Could not save config to file:", e);
+    }
+    return fromEnv;
+  }
+
+  try {
+    const saved: SavedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    console.log(`Config loaded from ${CONFIG_FILE}`);
+    return saved;
+  } catch {
+    return fromEnv;
+  }
+}
+
+const config = loadConfig();
+const OAUTH_CLIENT_ID = config.oauthClientId;
+const OAUTH_CLIENT_SECRET = config.oauthClientSecret;
 const PORT = parseInt(process.env.PORT || "3000");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

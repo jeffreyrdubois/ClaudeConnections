@@ -2,15 +2,56 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
-import { existsSync, readFileSync, watchFile, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, watchFile, writeFileSync } from "fs";
+import path from "path";
 import { z } from "zod";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
 const DATA_PATH         = process.env.DATA_PATH         || "/data/ancestry.json";
-const OAUTH_CLIENT_ID   = process.env.OAUTH_CLIENT_ID;
-const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
-const PORT              = parseInt(process.env.PORT || "3000");
+
+// ── OAuth Config Persistence ───────────────────────────────────────────────────
+// OAuth settings are persisted alongside the ancestry data so they survive
+// container recreation (e.g. Unraid auto-updates).
+
+const DATA_DIR   = path.dirname(DATA_PATH);
+const CONFIG_FILE = path.join(DATA_DIR, "config.json");
+
+interface SavedConfig {
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+}
+
+function loadConfig(): SavedConfig {
+  const fromEnv: SavedConfig = {
+    oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
+    oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
+  };
+
+  if (fromEnv.oauthClientId || fromEnv.oauthClientSecret) {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(CONFIG_FILE, JSON.stringify(fromEnv, null, 2), { mode: 0o600 });
+      console.log(`Config saved to ${CONFIG_FILE}`);
+    } catch (e) {
+      console.warn("Warning: Could not save config to file:", e);
+    }
+    return fromEnv;
+  }
+
+  try {
+    const saved: SavedConfig = JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
+    console.log(`Config loaded from ${CONFIG_FILE}`);
+    return saved;
+  } catch {
+    return fromEnv;
+  }
+}
+
+const oauthConfig         = loadConfig();
+const OAUTH_CLIENT_ID     = oauthConfig.oauthClientId;
+const OAUTH_CLIENT_SECRET = oauthConfig.oauthClientSecret;
+const PORT                = parseInt(process.env.PORT || "3000");
 
 // ── Data Types ─────────────────────────────────────────────────────────────────
 
