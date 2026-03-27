@@ -92,8 +92,8 @@ export function updateCollectionCard(id: number, data: Partial<CollectionCard>):
   return request<CollectionCard>(`/collection/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
-export function replaceCollectionCard(id: number, scryfall_id: string): Promise<CollectionCard> {
-  return request<CollectionCard>(`/collection/${id}/replace`, { method: "POST", body: JSON.stringify({ scryfall_id }) });
+export function replaceCollectionCard(id: number, scryfall_id: string, quantity?: number): Promise<CollectionCard> {
+  return request<CollectionCard>(`/collection/${id}/replace`, { method: "POST", body: JSON.stringify({ scryfall_id, quantity }) });
 }
 
 export function deleteCollectionCard(id: number): Promise<void> {

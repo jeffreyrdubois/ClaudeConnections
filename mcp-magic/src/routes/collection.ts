@@ -168,11 +168,12 @@ collectionRouter.patch("/bulk", (req, res) => {
 });
 
 // POST /api/collection/:id/replace
-// Swaps the scryfall card in place: keeps all metadata (folder, owner, condition, quantity)
-// and migrates all deck assignments to the new card.
+// Body: { scryfall_id, quantity? }
+// If quantity < existing.quantity: split — decrement old entry and create a new one for the new card.
+// If quantity >= existing.quantity (or omitted): in-place swap, migrating all deck assignments.
 collectionRouter.post("/:id/replace", (req, res) => {
   const id = parseInt(req.params.id);
-  const { scryfall_id } = req.body as { scryfall_id: string };
+  const { scryfall_id, quantity } = req.body as { scryfall_id: string; quantity?: number };
 
   if (!scryfall_id) {
     res.status(400).json({ error: "scryfall_id is required" });
@@ -196,34 +197,46 @@ collectionRouter.post("/:id/replace", (req, res) => {
     return;
   }
 
+  const replaceQty = Math.max(1, Math.min(quantity ?? existing.quantity, existing.quantity));
+
   try {
-    db.transaction(() => {
-      const oldId = existing.scryfall_id;
+    if (replaceQty < existing.quantity) {
+      // Partial replace: split the entry — decrement old, create new for the replaced copies.
+      db.transaction(() => {
+        db.prepare("UPDATE collection_cards SET quantity = quantity - ? WHERE id = ?").run(replaceQty, id);
+        db.prepare(`
+          INSERT INTO collection_cards (scryfall_id, folder_id, quantity, foil, condition, language, notes, purchase_price, owner, legal)
+          SELECT ?, folder_id, ?, foil, condition, language, notes, purchase_price, owner, legal
+          FROM collection_cards WHERE id = ?
+        `).run(scryfall_id, replaceQty, id);
+      })();
+    } else {
+      // Full replace: in-place swap + migrate all deck assignments for this card.
+      db.transaction(() => {
+        const oldId = existing.scryfall_id;
 
-      // Migrate every deck_cards row that uses the old scryfall_id.
-      // This covers both explicitly linked rows (collection_card_id = id) and legacy unlinked rows.
-      const affectedRows = db.prepare(
-        "SELECT id, deck_id, quantity FROM deck_cards WHERE scryfall_id = ?"
-      ).all(oldId) as { id: number; deck_id: number; quantity: number }[];
+        // Migrate deck_cards rows that reference this specific collection entry,
+        // plus any unlinked rows for the same scryfall_id.
+        const affectedRows = db.prepare(
+          "SELECT id, deck_id, quantity FROM deck_cards WHERE collection_card_id = ? OR (collection_card_id IS NULL AND scryfall_id = ?)"
+        ).all(id, oldId) as { id: number; deck_id: number; quantity: number }[];
 
-      for (const dc of affectedRows) {
-        const conflict = db.prepare(
-          "SELECT id, quantity FROM deck_cards WHERE deck_id = ? AND scryfall_id = ? AND id != ?"
-        ).get(dc.deck_id, scryfall_id, dc.id) as { id: number; quantity: number } | undefined;
+        for (const dc of affectedRows) {
+          const conflict = db.prepare(
+            "SELECT id, quantity FROM deck_cards WHERE deck_id = ? AND scryfall_id = ? AND id != ?"
+          ).get(dc.deck_id, scryfall_id, dc.id) as { id: number; quantity: number } | undefined;
 
-        if (conflict) {
-          // A row for (deck_id, new_scryfall_id) already exists — merge and remove the old row
-          db.prepare("UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?").run(dc.quantity, conflict.id);
-          db.prepare("DELETE FROM deck_cards WHERE id = ?").run(dc.id);
-        } else {
-          // Simple swap
-          db.prepare("UPDATE deck_cards SET scryfall_id = ?, collection_card_id = NULL WHERE id = ?").run(scryfall_id, dc.id);
+          if (conflict) {
+            db.prepare("UPDATE deck_cards SET quantity = quantity + ? WHERE id = ?").run(dc.quantity, conflict.id);
+            db.prepare("DELETE FROM deck_cards WHERE id = ?").run(dc.id);
+          } else {
+            db.prepare("UPDATE deck_cards SET scryfall_id = ?, collection_card_id = NULL WHERE id = ?").run(scryfall_id, dc.id);
+          }
         }
-      }
 
-      // Swap the scryfall_id on the collection entry itself
-      db.prepare("UPDATE collection_cards SET scryfall_id = ? WHERE id = ?").run(scryfall_id, id);
-    })();
+        db.prepare("UPDATE collection_cards SET scryfall_id = ? WHERE id = ?").run(scryfall_id, id);
+      })();
+    }
 
     res.json(getCollectionCardById(id));
   } catch (e: unknown) {
