@@ -1,0 +1,26 @@
+services:
+
+  # ── Board Game Tracker Web UI ──────────────────────────────────────────────────
+  # Web UI:  http://localhost:3004
+  mcp-boardgametracker:
+    build: .
+    container_name: mcp-boardgametracker
+    network_mode: bridge
+    restart: unless-stopped
+    ports:
+      - "3004:3000"
+    volumes:
+      - mcp-boardgametracker-data:/data
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  mcp-boardgametracker-data:
+    driver: local

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>mcp-boardgametracker</Name>
+  <Repository>ghcr.io/jeffreyrdubois/mcp-boardgametracker:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/jeffreyrdubois/ClaudeConnections</Project>
+  <Overview>Board game tracker web app for tracking matches, players, results, and analytics. Features include match entry, average finishing positions, head-to-head comparisons, Monopoly tournament tracking, win odds, trend charts, and versioned game instructions with house rules support.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3004]/</WebUI>
+  <TemplateURL>false</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-boardgametracker/assets/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web UI Port" Target="3000" Default="3004" Mode="tcp" Description="Port for the web UI." Type="Port" Display="always" Required="true" Mask="false">3004</Config>
+
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/mcp-boardgametracker" Mode="rw" Description="Path on the host where the SQLite database will be stored. All match data, players, and analytics are persisted here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mcp-boardgametracker</Config>
+
+</Container>
