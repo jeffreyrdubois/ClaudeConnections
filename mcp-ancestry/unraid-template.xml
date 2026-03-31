@@ -12,7 +12,7 @@
   <Overview>MCP (Model Context Protocol) server that exposes your Ancestry.com family tree to Claude.ai. Export your tree as a GEDCOM from Ancestry.com, place it in the mapped data path, and Claude can search people, browse family relationships, and explore ancestors and descendants. Data is automatically filtered to individuals born 1900 or later.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-ancestry/unraid-template.xml</TemplateURL>
+  <TemplateURL>false</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-ancestry/assets/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>

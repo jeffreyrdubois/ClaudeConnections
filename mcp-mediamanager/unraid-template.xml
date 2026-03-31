@@ -12,7 +12,7 @@
   <Overview>MCP (Model Context Protocol) server that connects Claude.ai to your media stack: Sonarr, Radarr, Tautulli, and Overseerr. Ask Claude to add shows and movies, check what's airing, see who's streaming, manage requests, and more. Each service is optional — only configure the ones you use.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/health</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-mediamanager/unraid-template.xml</TemplateURL>
+  <TemplateURL>false</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jeffreyrdubois/ClaudeConnections/main/mcp-mediamanager/assets/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
