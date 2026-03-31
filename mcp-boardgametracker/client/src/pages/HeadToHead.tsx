@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { getPlayers, getHeadToHead } from "../api/client";
 
 export default function HeadToHead() {
-  const { data: players } = useQuery({ queryKey: ["players"], queryFn: getPlayers });
+  const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => getPlayers() });
   const [player1, setPlayer1] = useState<number | "">("");
   const [player2, setPlayer2] = useState<number | "">("");
 

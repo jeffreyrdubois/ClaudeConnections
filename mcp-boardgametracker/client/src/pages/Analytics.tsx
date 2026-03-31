@@ -9,7 +9,7 @@ export default function Analytics() {
   const [trendPlayer, setTrendPlayer] = useState<number | "">("");
   const { data: avgRank } = useQuery({ queryKey: ["avgRank"], queryFn: getAverageRank });
   const { data: odds } = useQuery({ queryKey: ["odds"], queryFn: getWinOdds });
-  const { data: players } = useQuery({ queryKey: ["players"], queryFn: getPlayers });
+  const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => getPlayers() });
   const { data: trendData } = useQuery({
     queryKey: ["trend", trendPlayer],
     queryFn: () => getPlayerTrend(trendPlayer as number),

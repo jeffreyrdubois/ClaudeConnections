@@ -1,6 +1,7 @@
 export interface Player {
   id: number;
   name: string;
+  is_active: number;
   created_at: number;
 }
 

@@ -36,23 +36,37 @@ export default function MonopolyTracker() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="stat-card items-center">
-          <div className="stat-label">Jeffrey</div>
-          <div className="stat-value text-blue-400">{wins.jeffrey}</div>
-          <div className="text-xs text-gray-400">wins | {cumulative.jeffrey} total pts</div>
-        </div>
-        <div className="stat-card items-center">
-          <div className="stat-label">Robert</div>
-          <div className="stat-value text-green-400">{wins.robert}</div>
-          <div className="text-xs text-gray-400">wins | {cumulative.robert} total pts</div>
-        </div>
-        <div className="stat-card items-center">
-          <div className="stat-label">Bobby</div>
-          <div className="stat-value text-accent">{wins.bobby}</div>
-          <div className="text-xs text-gray-400">wins | {cumulative.bobby} total pts</div>
-        </div>
-      </div>
+      {(() => {
+        const leader = Math.min(cumulative.jeffrey, cumulative.robert, cumulative.bobby);
+        const jBehind = cumulative.jeffrey - leader;
+        const rBehind = cumulative.robert - leader;
+        const bBehind = cumulative.bobby - leader;
+        return (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="stat-card items-center">
+              <div className="stat-label">Jeffrey</div>
+              <div className="stat-value text-blue-400">{cumulative.jeffrey}</div>
+              <div className="text-xs text-gray-400">
+                {wins.jeffrey} Wins | {jBehind === 0 ? "Leader" : `${jBehind} pts behind leader`}
+              </div>
+            </div>
+            <div className="stat-card items-center">
+              <div className="stat-label">Robert</div>
+              <div className="stat-value text-green-400">{cumulative.robert}</div>
+              <div className="text-xs text-gray-400">
+                {wins.robert} Wins | {rBehind === 0 ? "Leader" : `${rBehind} pts behind leader`}
+              </div>
+            </div>
+            <div className="stat-card items-center">
+              <div className="stat-label">Bobby</div>
+              <div className="stat-value text-accent">{cumulative.bobby}</div>
+              <div className="text-xs text-gray-400">
+                {wins.bobby} Wins | {bBehind === 0 ? "Leader" : `${bBehind} pts behind leader`}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Cumulative Points Chart */}
       {chartData.length > 0 && (

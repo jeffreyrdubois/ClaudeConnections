@@ -59,12 +59,16 @@ export function deleteUserById(id: number): Promise<{ ok: boolean }> {
 
 // ── Players ───────────────────────────────────────────────────────────────────
 
-export function getPlayers(): Promise<Player[]> {
-  return request("/players");
+export function getPlayers(activeOnly?: boolean): Promise<Player[]> {
+  return request(`/players${activeOnly ? "?active=true" : ""}`);
 }
 
 export function createPlayer(name: string): Promise<Player> {
   return request("/players", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export function updatePlayer(id: number, data: { is_active?: boolean }): Promise<void> {
+  return request(`/players/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export function deletePlayer(id: number): Promise<void> {
