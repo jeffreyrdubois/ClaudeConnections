@@ -17,6 +17,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    is_active INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
@@ -113,23 +114,41 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_instruction_lines_section ON instruction_lines(section_id);
 `);
 
+// ── Migrations ────────────────────────────────────────────────────────────────
+// Add is_active column to players if it doesn't exist (for existing databases)
+try {
+  db.prepare("SELECT is_active FROM players LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE players ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1");
+}
+
 // ── Player Queries ────────────────────────────────────────────────────────────
 
 export function getAllPlayers() {
   return db.prepare("SELECT * FROM players ORDER BY name").all() as {
-    id: number; name: string; created_at: number;
+    id: number; name: string; is_active: number; created_at: number;
+  }[];
+}
+
+export function getActivePlayers() {
+  return db.prepare("SELECT * FROM players WHERE is_active = 1 ORDER BY name").all() as {
+    id: number; name: string; is_active: number; created_at: number;
   }[];
 }
 
 export function getPlayerById(id: number) {
   return db.prepare("SELECT * FROM players WHERE id = ?").get(id) as {
-    id: number; name: string; created_at: number;
+    id: number; name: string; is_active: number; created_at: number;
   } | undefined;
 }
 
 export function createPlayer(name: string) {
   const result = db.prepare("INSERT INTO players (name) VALUES (?)").run(name);
-  return { id: result.lastInsertRowid as number, name };
+  return { id: result.lastInsertRowid as number, name, is_active: 1 };
+}
+
+export function updatePlayerActive(id: number, isActive: boolean) {
+  db.prepare("UPDATE players SET is_active = ? WHERE id = ?").run(isActive ? 1 : 0, id);
 }
 
 export function deletePlayer(id: number) {

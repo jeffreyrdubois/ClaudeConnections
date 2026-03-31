@@ -6,7 +6,7 @@ export default function Dashboard() {
   const { data: leaderboard } = useQuery({ queryKey: ["leaderboard"], queryFn: getLeaderboard });
   const { data: recentMatches } = useQuery({ queryKey: ["matches", "recent"], queryFn: () => getMatches({ limit: 10 }) });
   const { data: matchCount } = useQuery({ queryKey: ["matchCount"], queryFn: getMatchCount });
-  const { data: players } = useQuery({ queryKey: ["players"], queryFn: getPlayers });
+  const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => getPlayers() });
   const { data: games } = useQuery({ queryKey: ["games"], queryFn: getGames });
 
   return (

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Users } from "lucide-react";
-import { getPlayers, createPlayer, deletePlayer } from "../api/client";
+import { getPlayers, createPlayer, updatePlayer, deletePlayer } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 export default function Players() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { data: players, isLoading } = useQuery({ queryKey: ["players"], queryFn: getPlayers });
+  const { data: players, isLoading } = useQuery({ queryKey: ["players"], queryFn: () => getPlayers() });
   const [newName, setNewName] = useState("");
   const [error, setError] = useState("");
 
@@ -21,6 +21,11 @@ export default function Players() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) => updatePlayer(id, { is_active }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["players"] }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deletePlayer(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["players"] }),
@@ -30,6 +35,9 @@ export default function Players() {
     e.preventDefault();
     if (newName.trim()) addMutation.mutate(newName.trim());
   }
+
+  const activePlayers = players?.filter(p => p.is_active) ?? [];
+  const inactivePlayers = players?.filter(p => !p.is_active) ?? [];
 
   return (
     <div className="p-6 space-y-6">
@@ -56,34 +64,81 @@ export default function Players() {
       {isLoading ? (
         <div className="text-gray-500">Loading...</div>
       ) : (
-        <div className="card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700/50 text-gray-400 text-left">
-                <th className="p-3">Name</th>
-                {user && <th className="p-3 w-16"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {players?.map(p => (
-                <tr key={p.id} className="border-b border-gray-700/30 hover:bg-gray-700/20">
-                  <td className="p-3 text-white font-medium">{p.name}</td>
-                  {user && (
-                    <td className="p-3">
-                      <button
-                        onClick={() => { if (confirm(`Delete ${p.name}?`)) deleteMutation.mutate(p.id); }}
-                        className="p-1 text-gray-600 hover:text-red-400 transition-colors"
-                        title="Delete player"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+        <>
+          {/* Active Players */}
+          <div className="card">
+            <div className="p-3 border-b border-gray-700/50">
+              <h2 className="text-sm font-semibold text-gray-300">Active Players ({activePlayers.length})</h2>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {activePlayers.map(p => (
+                  <tr key={p.id} className="border-b border-gray-700/30 hover:bg-gray-700/20">
+                    <td className="p-3 text-white font-medium">{p.name}</td>
+                    <td className="p-3 w-32 text-right">
+                      {user && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => toggleActiveMutation.mutate({ id: p.id, is_active: false })}
+                            className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                            title="Mark inactive"
+                          >
+                            Deactivate
+                          </button>
+                          <button
+                            onClick={() => { if (confirm(`Delete ${p.name}?`)) deleteMutation.mutate(p.id); }}
+                            className="p-1 text-gray-600 hover:text-red-400 transition-colors"
+                            title="Delete player"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Inactive Players */}
+          {inactivePlayers.length > 0 && (
+            <div className="card">
+              <div className="p-3 border-b border-gray-700/50">
+                <h2 className="text-sm font-semibold text-gray-500">Inactive Players ({inactivePlayers.length})</h2>
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {inactivePlayers.map(p => (
+                    <tr key={p.id} className="border-b border-gray-700/30 hover:bg-gray-700/20 opacity-60">
+                      <td className="p-3 text-gray-400">{p.name}</td>
+                      <td className="p-3 w-32 text-right">
+                        {user && (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => toggleActiveMutation.mutate({ id: p.id, is_active: true })}
+                              className="text-xs text-gray-500 hover:text-green-400 transition-colors"
+                              title="Mark active"
+                            >
+                              Activate
+                            </button>
+                            <button
+                              onClick={() => { if (confirm(`Delete ${p.name}?`)) deleteMutation.mutate(p.id); }}
+                              className="p-1 text-gray-600 hover:text-red-400 transition-colors"
+                              title="Delete player"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

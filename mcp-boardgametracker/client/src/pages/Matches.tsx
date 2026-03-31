@@ -16,17 +16,20 @@ function MatchForm({
   editMatch?: Match;
 }) {
   const queryClient = useQueryClient();
-  const { data: players } = useQuery({ queryKey: ["players"], queryFn: getPlayers });
+  const { data: allPlayers } = useQuery({ queryKey: ["players"], queryFn: () => getPlayers() });
   const { data: games } = useQuery({ queryKey: ["games"], queryFn: getGames });
+
+  // Build initial positions map from edit data
+  const editPositions = new Map<number, string>();
+  editMatch?.results?.forEach(r => editPositions.set(r.player_id, String(r.position)));
 
   const [gameId, setGameId] = useState(editMatch?.game_id ?? 0);
   const [date, setDate] = useState(editMatch?.date ?? new Date().toISOString().split("T")[0]);
   const [boardId, setBoardId] = useState<number | "">(editMatch?.board_id ?? "");
   const [instructionVersionId, setInstructionVersionId] = useState<number | "">(editMatch?.instruction_version_id ?? "");
   const [notes, setNotes] = useState(editMatch?.notes ?? "");
-  const [selectedPlayers, setSelectedPlayers] = useState<{ player_id: number; position: number }[]>(
-    editMatch?.results?.map(r => ({ player_id: r.player_id, position: r.position })) ?? []
-  );
+  // positions: map of player_id -> position string (empty string = didn't play)
+  const [positions, setPositions] = useState<Map<number, string>>(editPositions);
   const [error, setError] = useState("");
 
   const { data: boards } = useQuery({
@@ -53,36 +56,46 @@ function MatchForm({
     onError: (e: Error) => setError(e.message),
   });
 
-  function addPlayer(pid: number) {
-    if (selectedPlayers.some(p => p.player_id === pid)) return;
-    setSelectedPlayers([...selectedPlayers, { player_id: pid, position: selectedPlayers.length + 1 }]);
-  }
-
-  function removePlayer(pid: number) {
-    const filtered = selectedPlayers.filter(p => p.player_id !== pid);
-    setSelectedPlayers(filtered.map((p, i) => ({ ...p, position: i + 1 })));
-  }
-
-  function setPosition(pid: number, pos: number) {
-    setSelectedPlayers(selectedPlayers.map(p => p.player_id === pid ? { ...p, position: pos } : p));
+  function setPosition(pid: number, val: string) {
+    const next = new Map(positions);
+    if (val === "") {
+      next.delete(pid);
+    } else {
+      next.set(pid, val);
+    }
+    setPositions(next);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!gameId) { setError("Select a game"); return; }
-    if (selectedPlayers.length < 2) { setError("Add at least 2 players"); return; }
+
+    // Build results from positions (only players with a position entered)
+    const results: { player_id: number; position: number }[] = [];
+    for (const [pid, posStr] of positions) {
+      const pos = parseInt(posStr);
+      if (!isNaN(pos) && pos > 0) {
+        results.push({ player_id: pid, position: pos });
+      }
+    }
+
+    if (results.length < 2) { setError("Enter positions for at least 2 players"); return; }
+
     saveMutation.mutate({
       game_id: gameId,
       board_id: boardId || null,
       date: date || null,
-      player_count: selectedPlayers.length,
+      player_count: results.length,
       notes: notes || null,
       instruction_version_id: instructionVersionId || null,
-      results: selectedPlayers,
+      results,
     });
   }
 
-  const playerMap = new Map((players ?? []).map(p => [p.id, p]));
+  // Show active players for new matches, or all players with positions for edits
+  const displayPlayers = editMatch
+    ? allPlayers ?? []
+    : (allPlayers ?? []).filter(p => p.is_active);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -130,35 +143,25 @@ function MatchForm({
             </div>
           )}
 
-          {/* Players & Positions */}
+          {/* Players & Positions — all active players listed, leave blank if didn't play */}
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">Players & Positions</label>
-            <select
-              className="select mb-2"
-              value=""
-              onChange={e => { if (e.target.value) addPlayer(Number(e.target.value)); }}
-            >
-              <option value="">Add a player...</option>
-              {players?.filter(p => !selectedPlayers.some(sp => sp.player_id === p.id))
-                .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-
-            <div className="space-y-2">
-              {selectedPlayers.map(sp => (
-                <div key={sp.player_id} className="flex items-center gap-2 bg-surface-input rounded-lg px-3 py-2">
-                  <span className="text-white text-sm flex-1">{playerMap.get(sp.player_id)?.name}</span>
-                  <label className="text-xs text-gray-400">Position:</label>
+            <label className="text-xs text-gray-400 mb-1 block">
+              Finishing Positions <span className="text-gray-600">(leave blank = didn't play)</span>
+            </label>
+            <div className="space-y-1.5">
+              {displayPlayers.map(p => (
+                <div key={p.id} className="flex items-center gap-3 bg-surface-input rounded-lg px-3 py-2">
+                  <span className={`text-sm flex-1 ${positions.has(p.id) ? "text-white font-medium" : "text-gray-500"}`}>
+                    {p.name}
+                  </span>
                   <input
                     type="number"
                     min={1}
-                    max={selectedPlayers.length}
                     className="input w-16 text-center py-1"
-                    value={sp.position}
-                    onChange={e => setPosition(sp.player_id, parseInt(e.target.value) || 1)}
+                    value={positions.get(p.id) ?? ""}
+                    onChange={e => setPosition(p.id, e.target.value)}
+                    placeholder="—"
                   />
-                  <button type="button" onClick={() => removePlayer(sp.player_id)} className="p-1 text-gray-600 hover:text-red-400">
-                    <X className="w-4 h-4" />
-                  </button>
                 </div>
               ))}
             </div>

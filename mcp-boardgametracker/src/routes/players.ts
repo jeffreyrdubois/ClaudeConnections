@@ -1,10 +1,11 @@
 import { Router, Request, Response } from "express";
-import { getAllPlayers, createPlayer, deletePlayer } from "../db/index.js";
+import { getAllPlayers, getActivePlayers, createPlayer, updatePlayerActive, deletePlayer } from "../db/index.js";
 
 export const playersRouter = Router();
 
-playersRouter.get("/", (_req: Request, res: Response) => {
-  res.json(getAllPlayers());
+playersRouter.get("/", (req: Request, res: Response) => {
+  const activeOnly = req.query.active === "true";
+  res.json(activeOnly ? getActivePlayers() : getAllPlayers());
 });
 
 playersRouter.post("/", (req: Request, res: Response) => {
@@ -23,6 +24,14 @@ playersRouter.post("/", (req: Request, res: Response) => {
       throw e;
     }
   }
+});
+
+playersRouter.patch("/:id", (req: Request, res: Response) => {
+  const { is_active } = req.body as { is_active?: boolean };
+  if (is_active !== undefined) {
+    updatePlayerActive(parseInt(req.params.id), is_active);
+  }
+  res.json({ ok: true });
 });
 
 playersRouter.delete("/:id", (req: Request, res: Response) => {
