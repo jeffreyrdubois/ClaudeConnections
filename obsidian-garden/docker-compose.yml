@@ -1,0 +1,112 @@
+name: obsidian-garden
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Self-hosted Obsidian-style markdown garden for Unraid.
+#
+#   • silverbullet            — editable web wiki + graph view  → host port 4000
+#   • silverbullet-readonly   — public, read-only "garden" view → host port 4001
+#   • mcp-obsidian            — MCP server for Claude.ai         → host port 3004
+#   • cloudflared (optional)  — Cloudflare Tunnel for public access behind Access
+#
+# All three note services share ONE folder (./space). Notes edited in the wiki,
+# served by the read-only view, and read/written by Claude through the MCP server
+# are the exact same markdown files on disk.
+#
+# See README.md for the full setup, including the Cloudflare Access + Service
+# Token configuration that lets Claude connect to the MCP server.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Editable wiki + graph view (your private editor) ─────────────────────────
+  silverbullet:
+    image: ghcr.io/silverbulletmd/silverbullet:v2
+    container_name: obsidian-silverbullet
+    restart: unless-stopped
+    environment:
+      # username:password for the built-in login (defense-in-depth behind Cloudflare)
+      - SB_USER=${SB_USER:?set SB_USER=user:password in .env}
+      - SB_NAME=${SB_NAME:-My Garden}
+      # Run as the owner of ./space so files stay consistent with the MCP server.
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+    volumes:
+      - ./space:/space
+    ports:
+      - "4000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Public read-only "digital garden" view ───────────────────────────────────
+  # Optional. Enable with:  docker compose --profile public up -d
+  # Mounted :ro and SB_READ_ONLY so it can never modify your notes. If it fails to
+  # build its start-up index against a read-only mount, drop the ":ro" suffix —
+  # SB_READ_ONLY still disables all edits.
+  silverbullet-readonly:
+    image: ghcr.io/silverbulletmd/silverbullet:v2
+    container_name: obsidian-silverbullet-readonly
+    restart: unless-stopped
+    profiles: ["public"]
+    environment:
+      - SB_USER=${SB_RO_USER:-viewer:changeme}
+      - SB_READ_ONLY=1
+      - SB_NAME=${SB_NAME:-My Garden} (public)
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+    volumes:
+      - ./space:/space:ro
+    ports:
+      - "4001:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── MCP server: lets Claude read / create / edit / delete notes ──────────────
+  mcp-obsidian:
+    image: ghcr.io/jeffreyrdubois/mcp-obsidian:latest
+    build: ../mcp-obsidian
+    container_name: obsidian-mcp
+    restart: unless-stopped
+    # Match SilverBullet's UID/GID so notes written by Claude and notes written in
+    # the editor are owned consistently and both sides can edit each other's files.
+    user: "${PUID:-99}:${PGID:-100}"
+    environment:
+      - VAULT_DIR=/vault
+      - NOTE_EXTENSIONS=${NOTE_EXTENSIONS:-.md,.markdown,.txt,.canvas}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-mcp-obsidian}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in .env}
+      - PORT=3004
+    volumes:
+      - ./space:/vault
+      - ./mcp-config:/config
+    ports:
+      - "3004:3004"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Cloudflare Tunnel (optional) ─────────────────────────────────────────────
+  # Enable with:  docker compose --profile tunnel up -d
+  # Create a tunnel in the Cloudflare Zero Trust dashboard, copy its token into
+  # TUNNEL_TOKEN, then add the public hostnames (see README.md) pointing at:
+  #   wiki        → http://silverbullet:3000
+  #   garden      → http://silverbullet-readonly:3000   (if using the public view)
+  #   mcp         → http://mcp-obsidian:3004
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: obsidian-cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}

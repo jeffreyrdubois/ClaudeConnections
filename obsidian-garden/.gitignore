@@ -1,0 +1,6 @@
+.env
+config/
+mcp-config/
+# Keep the seed notes under space/ but ignore SilverBullet runtime artifacts.
+space/.silverbullet/
+space/.chrome-data/

@@ -1,0 +1,32 @@
+services:
+
+  # ── Obsidian / Markdown vault MCP Server ─────────────────────────────────────
+  # Standalone deployment of just the MCP server. For the full self-hosted stack
+  # (SilverBullet editor + read-only garden + this MCP server + Cloudflare tunnel)
+  # use ../obsidian-garden/docker-compose.yml instead.
+  #
+  # Cloudflare Tunnel / Access is handled externally — see obsidian-garden/README.md.
+  mcp-obsidian:
+    build: .
+    image: ghcr.io/jeffreyrdubois/mcp-obsidian:latest
+    container_name: mcp-obsidian
+    network_mode: bridge
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - VAULT_DIR=/vault
+      - NOTE_EXTENSIONS=${NOTE_EXTENSIONS:-.md,.markdown,.txt,.canvas}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-mcp-obsidian}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - PORT=3004
+    volumes:
+      - ./config:/config
+      # Point this at your markdown vault on the host:
+      - ./vault:/vault
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
