@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [mcp-ynab, mcp-mediamanager, mcp-ancestry, mcp-magic, mcp-boardgametracker]
+        service: [mcp-ynab, mcp-mediamanager, mcp-ancestry, mcp-magic, mcp-boardgametracker, mcp-journiv]
 
     permissions:
       contents: read
