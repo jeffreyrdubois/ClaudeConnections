@@ -117,6 +117,11 @@ the MCP does not surface image references. Decide later whether it should.
 
 ## Deploy
 
+For the generic install flow shared by every server in this repo
+(image → config → tunnel → connector → verify), see the
+**[install runbook in the root README](../README.md#how-to-install-a-new-mcp-server-on-unraid)**.
+The Journiv-specific steps below layer on top of it.
+
 These steps run on your server — this repo ships the code, image, and templates.
 
 1. **Create a dedicated Journiv account for the MCP** (not your personal login),
