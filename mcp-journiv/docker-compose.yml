@@ -10,7 +10,7 @@ services:
     container_name: mcp-journiv
     restart: unless-stopped
     ports:
-      - "3002:3000"
+      - "3005:3000"
     environment:
       # Journiv (internal Docker network hostname — NOT the public URL)
       - JOURNIV_URL=${JOURNIV_URL:-http://journiv:8000}
