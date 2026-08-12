@@ -5,6 +5,7 @@ import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
+import { rawRequest as rawRequestBase, type RawResponse } from "./httpclient.js";
 import {
   asList,
   isVisible as isVisibleTag,
@@ -26,6 +27,7 @@ interface SavedConfig {
   journivUser?: string;
   journivPass?: string;
   requiredTag?: string;
+  hostHeader?: string;
   oauthClientId?: string;
   oauthClientSecret?: string;
 }
@@ -36,6 +38,7 @@ function loadConfig(): SavedConfig {
     journivUser: process.env.JOURNIV_USER || undefined,
     journivPass: process.env.JOURNIV_PASS || undefined,
     requiredTag: process.env.JOURNIV_REQUIRED_TAG || undefined,
+    hostHeader: process.env.JOURNIV_HOST_HEADER || undefined,
     oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
     oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
   };
@@ -75,6 +78,16 @@ const JOURNIV_USER = config.journivUser ?? "";
 const JOURNIV_PASS = config.journivPass ?? "";
 // The allowlist tag. Everything is compared lowercased.
 const REQUIRED_TAG = (config.requiredTag ?? "ai").toLowerCase();
+// Optional Host header override. Journiv (Starlette TrustedHostMiddleware) only
+// accepts requests whose Host matches its configured public hostname (DOMAIN_NAME),
+// so hitting it by internal IP yields "Invalid host header". Set this to that
+// public hostname (no scheme, no port, no path — e.g. "journal.example.net") and
+// we connect to JOURNIV_URL's address while presenting the Host Journiv trusts.
+// Leave unset when JOURNIV_URL's own host is already trusted.
+const JOURNIV_HOST_HEADER = (config.hostHeader ?? "")
+  .replace(/^https?:\/\//, "")
+  .replace(/\/.*$/, "")
+  .trim();
 const OAUTH_CLIENT_ID = config.oauthClientId;
 const OAUTH_CLIENT_SECRET = config.oauthClientSecret;
 const PORT = parseInt(process.env.PORT || "3000");
@@ -83,6 +96,16 @@ const API = `${JOURNIV_URL}/api/v1`;
 
 function journivConfigured(): boolean {
   return !!(JOURNIV_URL && JOURNIV_USER && JOURNIV_PASS);
+}
+
+// ── Low-level HTTP to Journiv ───────────────────────────────────────────────────
+// rawRequest lives in ./httpclient (side-effect-free, unit-tested). This thin
+// wrapper binds the configured Host override so callers don't repeat it.
+function rawRequest(
+  pathOrUrl: string,
+  opts: { method?: string; headers?: Record<string, string>; body?: string } = {}
+): Promise<RawResponse> {
+  return rawRequestBase(pathOrUrl, opts, JOURNIV_HOST_HEADER);
 }
 
 // ── Journiv auth (module-level, shared across MCP requests) ─────────────────────
@@ -97,15 +120,15 @@ let loginInFlight: Promise<void> | null = null;
 async function login(): Promise<void> {
   if (loginInFlight) return loginInFlight;
   loginInFlight = (async () => {
-    const res = await fetch(`${API}/auth/login`, {
+    const res = await rawRequest(`${API}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: JOURNIV_USER, password: JOURNIV_PASS }),
     });
-    if (!res.ok) {
-      throw new Error(`Journiv login failed: HTTP ${res.status}: ${await res.text()}`);
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`Journiv login failed: HTTP ${res.status}: ${res.body}`);
     }
-    const data: any = await res.json();
+    const data: any = JSON.parse(res.body || "{}");
     accessToken = data.access_token ?? null;
     refreshToken = data.refresh_token ?? null;
     if (!accessToken) throw new Error("Journiv login returned no access_token");
@@ -118,13 +141,13 @@ async function login(): Promise<void> {
 async function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   try {
-    const res = await fetch(`${API}/auth/refresh`, {
+    const res = await rawRequest(`${API}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    if (!res.ok) return false;
-    const data: any = await res.json();
+    if (res.status < 200 || res.status >= 300) return false;
+    const data: any = JSON.parse(res.body || "{}");
     if (data.access_token) {
       accessToken = data.access_token;
       // Journiv does not rotate the refresh token, but honor it if it ever does.
@@ -141,11 +164,15 @@ interface JError extends Error {
   status?: number;
 }
 
-// Authenticated fetch against the Journiv API. On 401 it refreshes (or re-logs
+// Authenticated request against the Journiv API. On 401 it refreshes (or re-logs
 // in) once and retries. Returns parsed JSON, raw text, or null for 204.
-async function jfetch(pathname: string, opts: RequestInit = {}, retried = false): Promise<any> {
+async function jfetch(
+  pathname: string,
+  opts: { method?: string; headers?: Record<string, string>; body?: string } = {},
+  retried = false
+): Promise<any> {
   if (!accessToken) await login();
-  const res = await fetch(`${API}${pathname}`, {
+  const res = await rawRequest(`${API}${pathname}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -160,15 +187,15 @@ async function jfetch(pathname: string, opts: RequestInit = {}, retried = false)
     return jfetch(pathname, opts, true);
   }
 
-  if (!res.ok) {
-    const err: JError = new Error(`HTTP ${res.status}: ${await res.text()}`);
+  if (res.status < 200 || res.status >= 300) {
+    const err: JError = new Error(`HTTP ${res.status}: ${res.body}`);
     err.status = res.status;
     throw err;
   }
 
-  if (res.status === 204) return null;
-  const ct = res.headers.get("content-type") ?? "";
-  return ct.includes("application/json") ? res.json() : res.text();
+  if (res.status === 204 || res.body === "") return null;
+  const ct = (res.headers["content-type"] as string) ?? "";
+  return ct.includes("application/json") ? JSON.parse(res.body) : res.body;
 }
 
 async function jget(pathname: string): Promise<any> {
@@ -593,6 +620,7 @@ app.get("/health", (_req, res) => {
     service: "mcp-journiv",
     configured: { journiv: journivConfigured() },
     requiredTag: REQUIRED_TAG,
+    hostHeaderOverride: JOURNIV_HOST_HEADER || null,
     oauth: !!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET),
   });
 });
@@ -713,6 +741,7 @@ app.delete("/mcp", (_req, res) => res.status(405).json({ error: "Method not allo
 app.listen(PORT, () => {
   console.log(`Journiv MCP Server running on port ${PORT}`);
   console.log(`Journiv:     ${journivConfigured() ? `✓ ${JOURNIV_URL}` : "✗ not configured"}`);
+  console.log(`Host header: ${JOURNIV_HOST_HEADER ? `override -> ${JOURNIV_HOST_HEADER}` : "(default from URL)"}`);
   console.log(`Visible tag: "${REQUIRED_TAG}" (allowlist)`);
   console.log(`OAuth:       ${!!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET) ? "enabled" : "disabled"}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);

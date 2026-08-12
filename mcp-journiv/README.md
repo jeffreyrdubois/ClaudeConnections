@@ -136,6 +136,16 @@ These steps run on your server — this repo ships the code, image, and template
    by default — check `docker network ls` and adjust). On Unraid, either attach it
    to Journiv's Docker network or set `JOURNIV_URL` to the host IP
    (`http://192.168.x.x:8000`).
+
+   > **"Invalid host header"?** Journiv (Starlette `TrustedHostMiddleware`) only
+   > accepts requests whose `Host` matches its configured public hostname
+   > (`DOMAIN_NAME`), which is a **single** value — adding a second `DOMAIN_NAME`
+   > breaks the public one. So don't try to whitelist the internal IP in Journiv.
+   > Instead set **`JOURNIV_HOST_HEADER`** to Journiv's public hostname (just the
+   > host, e.g. `journal.your-domain.com`). The MCP still connects to `JOURNIV_URL`
+   > (the internal IP) but presents that trusted `Host`, so Journiv accepts it —
+   > no Journiv config change. Leave it unset if `JOURNIV_URL`'s host is already
+   > trusted (e.g. reaching `http://journiv:8000` on the shared Docker network).
 4. **Run:**
    ```bash
    docker compose up -d --build

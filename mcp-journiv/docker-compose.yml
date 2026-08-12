@@ -18,6 +18,10 @@ services:
       - JOURNIV_PASS=${JOURNIV_MCP_PASS}
       # Only entries carrying this tag are ever visible to Claude. Opt-in.
       - JOURNIV_REQUIRED_TAG=${JOURNIV_REQUIRED_TAG:-ai}
+      # Optional: present this Host to Journiv (its public hostname / DOMAIN_NAME)
+      # so its TrustedHostMiddleware accepts requests made to an internal IP.
+      # Leave unset if JOURNIV_URL's host is already trusted.
+      - JOURNIV_HOST_HEADER=${JOURNIV_HOST_HEADER:-}
       # MCP auth (used when registering the remote connector in Claude)
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
