@@ -48,20 +48,38 @@ the `ghcr.io/...:latest` image the steps below pull.
 
 ### 2. Add the container in Unraid
 
-The easiest path is the per-server **Unraid template** (`unraid-template.xml` in
-the server folder), which pre-fills every field with descriptions.
+Unraid's **Add Container** page has no "paste a template URL" box — the Template
+field is a dropdown of templates it already knows about. So for a brand-new
+server, just fill the form in by hand. The server folder's `unraid-template.xml`
+is your **reference for exactly which fields to enter** (name, ports, paths,
+variables, and their descriptions) — you read it while filling the form; you
+don't have to import it.
 
-**Via template (recommended):**
-1. In Unraid: **Docker → Add Container**.
-2. Point **Template** at the server's `unraid-template.xml` (paste its raw
-   GitHub URL into the template field, or drop the file into
-   `/boot/config/plugins/dockerMan/templates-user/`).
-3. Fill in the fields it prompts for. Every server needs at least:
-   - **AppData Path** → `/mnt/user/appdata/<server-name>` (persists config across updates)
-   - **MCP Port** → the server's unique host port (see the table above)
-   - **MCP Client ID** / **MCP Auth Token (Secret)** → the OAuth pair below
-   - …plus that server's own credentials (API token, upstream URL, etc.)
-4. Apply. Unraid pulls `ghcr.io/jeffreyrdubois/<server-name>:latest` and starts it.
+**Fill the form manually (simplest):**
+1. In Unraid: **Docker → Add Container**. Leave the **Template** dropdown as-is.
+2. Set:
+   - **Name** → `<server-name>` (e.g. `mcp-journiv`)
+   - **Repository** → `ghcr.io/jeffreyrdubois/<server-name>:latest`
+   - **Network Type** → `Bridge`, unless the server must reach another container
+     by name (e.g. `mcp-journiv` → `http://journiv:8000`); then pick that
+     container's Docker network instead, or stay on Bridge and point the
+     upstream URL at the host IP (`http://192.168.x.x:8000`).
+3. Use **Add another Path, Port, Variable, Label…** to add each of:
+   - **Port** → Container `3000`, Host = the server's unique host port (see the table above), TCP
+   - **Path** → Container `/config`, Host `/mnt/user/appdata/<server-name>` (persists config across updates)
+   - **Variable** for each env var the server needs — always `OAUTH_CLIENT_ID` and
+     `OAUTH_CLIENT_SECRET` (the OAuth pair below), plus that server's own
+     credentials / upstream URL. The full list with descriptions is in the
+     server's `unraid-template.xml` and `.env.example`.
+4. **Apply.** Unraid pulls `ghcr.io/jeffreyrdubois/<server-name>:latest` and
+   starts it — and **auto-saves your entries as a user template**, so next time
+   the server *is* in the Template dropdown for quick edits.
+
+**Prefer the template pre-filled in the dropdown?** Copy the server's
+`unraid-template.xml` to `/boot/config/plugins/dockerMan/templates-user/`
+(rename it e.g. `my-<server-name>.xml`). It then appears under **User templates**
+in the Template dropdown with every field already populated. Optional — the
+manual form fill above reaches the same place.
 
 **Via compose (if you use the Compose Manager plugin instead):** copy the
 server's `.env.example` to `.env`, fill it in, and `docker compose up -d`. Some

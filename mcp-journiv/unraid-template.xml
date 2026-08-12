@@ -34,6 +34,8 @@
 
   <Config Name="Required Tag (allowlist)" Target="JOURNIV_REQUIRED_TAG" Default="ai" Mode="" Description="Only entries carrying this tag are visible to Claude, and every entry the MCP creates gets it automatically. Leave as 'ai' unless you want a different opt-in tag." Type="Variable" Display="always" Required="false" Mask="false">ai</Config>
 
+  <Config Name="Journiv Host Header (optional)" Target="JOURNIV_HOST_HEADER" Default="" Mode="" Description="Only needed if Journiv rejects the MCP with 'Invalid host header'. Journiv only trusts its configured public hostname (DOMAIN_NAME), so reaching it by internal IP is refused. Set this to that PUBLIC hostname (no scheme/port, e.g. journal.your-domain.com) — the MCP connects to the Journiv URL above but presents this Host so Journiv accepts it. No Journiv config change needed. Leave blank if the Journiv URL host is already trusted." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
   <Config Name="MCP Client ID" Target="OAUTH_CLIENT_ID" Default="mcp-journiv" Mode="" Description="OAuth client ID used when configuring the Claude remote MCP connector. You can leave this as 'mcp-journiv'." Type="Variable" Display="always" Required="false" Mask="false">mcp-journiv</Config>
 
   <Config Name="MCP Auth Token (Secret)" Target="OAUTH_CLIENT_SECRET" Default="" Mode="" Description="Secret token protecting your MCP endpoint. The MCP hostname has NO Cloudflare Access policy, so this is the boundary. Set a long random string (openssl rand -hex 32) and use the same value in Claude. Do not leave blank if internet-reachable." Type="Variable" Display="always" Required="true" Mask="true"></Config>
