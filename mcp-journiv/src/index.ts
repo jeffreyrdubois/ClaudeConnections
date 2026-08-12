@@ -6,13 +6,12 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { rawRequest as rawRequestBase, type RawResponse } from "./httpclient.js";
+import { markdownToDelta, appendMarkdownToDelta } from "./markdown.js";
 import {
   asList,
   isVisible as isVisibleTag,
   tagNames,
-  textToDelta,
   deltaToText,
-  appendTextToDelta,
 } from "./visibility.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -566,7 +565,12 @@ function createMcpServer(): McpServer {
     "create_entry",
     `Create a new journal entry. The "${REQUIRED_TAG}" tag is applied automatically so the entry is visible to you afterward and clearly marked as AI-authored in the Journiv UI. Writes to the default journal unless journal_id is given (use list_journals to find ids).`,
     {
-      content: z.string().min(1).describe("The body text of the entry."),
+      content: z
+        .string()
+        .min(1)
+        .describe(
+          "The body text of the entry. Markdown is supported and rendered as real formatting (headings, bold, italic, lists, blockquotes, inline/fenced code, links)."
+        ),
       title: z.string().optional().describe("Optional title for the entry."),
       note: z.string().max(500).optional().describe("Optional short note (max 500 chars)."),
       date: z
@@ -591,7 +595,7 @@ function createMcpServer(): McpServer {
           entry: {
             journal_id: journalId,
             ...(title ? { title } : {}),
-            content_delta: textToDelta(content),
+            content_delta: markdownToDelta(content),
           },
         };
         if (note) body.note = note;
@@ -633,7 +637,10 @@ function createMcpServer(): McpServer {
     `Append text to the end of an existing visible entry, preserving what's already there. Returns "not found" if the entry isn't tagged "${REQUIRED_TAG}".`,
     {
       entry_id: z.string().describe("The entry (moment) id to append to."),
-      text: z.string().min(1).describe("Text to append."),
+      text: z
+        .string()
+        .min(1)
+        .describe("Text to append. Markdown is supported and rendered as real formatting."),
     },
     async ({ entry_id, text }) => {
       if (!journivConfigured()) return notConfigured();
@@ -645,7 +652,7 @@ function createMcpServer(): McpServer {
           return errorResponse("This entry has no text body to append to. Use create_entry instead.");
         }
         const full = await jget(`/entries/${entryId}`);
-        const newDelta = appendTextToDelta(full?.content_delta, text);
+        const newDelta = appendMarkdownToDelta(full?.content_delta, text);
         // PUT /entries touches body/title only — it structurally cannot alter tags.
         await jfetch(`/entries/${entryId}`, {
           method: "PUT",
@@ -664,7 +671,12 @@ function createMcpServer(): McpServer {
     `Replace the body text (and optionally title) of an existing visible entry. Cannot change tags. Returns "not found" if the entry isn't tagged "${REQUIRED_TAG}".`,
     {
       entry_id: z.string().describe("The entry (moment) id to update."),
-      content: z.string().min(1).describe("The new body text. Replaces the existing body."),
+      content: z
+        .string()
+        .min(1)
+        .describe(
+          "The new body text. Replaces the existing body. Markdown is supported and rendered as real formatting."
+        ),
       title: z.string().optional().describe("Optional new title."),
     },
     async ({ entry_id, content, title }) => {
@@ -678,7 +690,7 @@ function createMcpServer(): McpServer {
         }
         // Body-only update. We never send a tags field, and PUT /entries has no
         // tags field to send even if we did — tag changes happen in the UI only.
-        const body: Record<string, unknown> = { content_delta: textToDelta(content) };
+        const body: Record<string, unknown> = { content_delta: markdownToDelta(content) };
         if (title !== undefined) body.title = title;
         await jfetch(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(body) });
         const updated = await jgetOrNull(`/moments/${entry_id}`);

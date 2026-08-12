@@ -52,6 +52,18 @@ the default (or tell Claude its id in your connector instructions), and override
 per entry when needed. `list_journals` returns only journal metadata (id, title,
 counts) — never entry contents, which remain governed by the `ai` allowlist.
 
+### Formatting (markdown)
+
+Journiv's API stores entry bodies as a Quill Delta (rich text) and accepts no
+markdown or format field. But any client — Claude especially — naturally writes
+**markdown** into a "body text" field, which would otherwise be stored as literal
+characters (`**bold**` showing as asterisks). So the write tools
+(`create_entry`, `update_entry`, `append_to_entry`) convert markdown to real
+Delta formatting before sending: headings, bold, italic, inline/fenced code,
+links, blockquotes, and bullet/ordered lists. Anything unrecognized falls through
+as plain text (never corrupted), and `snake_case`/stray markers are left literal.
+The conversion lives in `src/markdown.ts` with unit tests.
+
 ## The visibility model (read this)
 
 The allowlist is enforced at a **single choke point**, not per tool, so adding a

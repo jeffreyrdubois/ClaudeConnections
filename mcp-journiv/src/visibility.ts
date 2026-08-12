@@ -1,11 +1,8 @@
-// Pure, side-effect-free helpers for the visibility allowlist and the Quill Delta
-// <-> plain-text boundary. Kept separate from index.ts so they can be unit-tested
-// without starting the HTTP server, and so the "single choke point" for
-// visibility lives in one small, auditable file.
-
-export interface Delta {
-  ops: Array<{ insert: any; attributes?: Record<string, unknown> }>;
-}
+// Pure, side-effect-free helpers for the visibility allowlist and reading Quill
+// Deltas back to plain text. Kept separate from index.ts so they can be
+// unit-tested without starting the HTTP server, and so the "single choke point"
+// for visibility lives in one small, auditable file. (Markdown -> Delta for the
+// write path lives in markdown.ts.)
 
 // Journiv list endpoints have returned bare arrays and, in places, an envelope.
 // Normalize both so one API-shape change doesn't silently break every tool.
@@ -35,13 +32,9 @@ export function tagNames(moment: any): string[] {
   return tags.map((t: any) => (typeof t === "string" ? t : t?.name)).filter(Boolean);
 }
 
-// ── Quill Delta <-> plain text ──────────────────────────────────────────────────
+// ── Quill Delta -> plain text ───────────────────────────────────────────────────
 
-export function textToDelta(text: string): Delta {
-  const t = (text ?? "").toString();
-  return { ops: [{ insert: t.endsWith("\n") ? t : t + "\n" }] };
-}
-
+// Flatten a Quill Delta to plain text for display, dropping media/embed inserts.
 export function deltaToText(delta: any): string {
   if (!delta) return "";
   const ops = Array.isArray(delta) ? delta : delta.ops ?? [];
@@ -49,23 +42,4 @@ export function deltaToText(delta: any): string {
     .map((o: any) => (typeof o?.insert === "string" ? o.insert : "")) // drop media/embeds
     .join("")
     .trim();
-}
-
-// Append text while preserving the existing Delta's ops (and thus formatting).
-export function appendTextToDelta(delta: any, text: string): Delta {
-  const ops: Delta["ops"] = delta
-    ? Array.isArray(delta)
-      ? [...delta]
-      : [...(delta.ops ?? [])]
-    : [];
-  let sep = "\n\n";
-  if (ops.length === 0) {
-    sep = "";
-  } else {
-    const last = ops[ops.length - 1];
-    if (typeof last.insert === "string" && last.insert.endsWith("\n")) sep = "\n";
-  }
-  const add = (text ?? "").toString();
-  ops.push({ insert: sep + (add.endsWith("\n") ? add : add + "\n") });
-  return { ops };
 }

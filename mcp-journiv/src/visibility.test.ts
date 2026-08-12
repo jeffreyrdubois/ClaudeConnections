@@ -2,14 +2,7 @@
 // Run with: npm test  (uses `node --test` on the compiled output).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  asList,
-  isVisible,
-  tagNames,
-  textToDelta,
-  deltaToText,
-  appendTextToDelta,
-} from "./visibility.js";
+import { asList, isVisible, tagNames, deltaToText } from "./visibility.js";
 
 const TAG = "ai";
 
@@ -53,21 +46,13 @@ test("tagNames extracts names from both shapes", () => {
   assert.deepEqual(tagNames({}), []);
 });
 
-test("text <-> delta round-trips and normalizes trailing newline", () => {
-  const d = textToDelta("hello world");
-  assert.deepEqual(d, { ops: [{ insert: "hello world\n" }] });
-  assert.equal(deltaToText(d), "hello world");
-  // deltaToText drops non-string (media/embed) inserts
-  assert.equal(deltaToText({ ops: [{ insert: "a" }, { insert: { image: "x" } }, { insert: "b" }] }), "ab");
+test("deltaToText flattens ops and drops media/embed inserts", () => {
+  assert.equal(deltaToText({ ops: [{ insert: "hello world\n" }] }), "hello world");
+  // drops non-string (media/embed) inserts, keeps surrounding text
+  assert.equal(
+    deltaToText({ ops: [{ insert: "a" }, { insert: { image: "x" } }, { insert: "b" }] }),
+    "ab"
+  );
+  assert.equal(deltaToText([{ insert: "array form\n" }]), "array form");
   assert.equal(deltaToText(null), "");
-});
-
-test("append preserves existing ops and separates cleanly", () => {
-  const existing = { ops: [{ insert: "first line\n" }] };
-  const out = appendTextToDelta(existing, "second line");
-  assert.deepEqual(out.ops, [{ insert: "first line\n" }, { insert: "\nsecond line\n" }]);
-  // existing kept intact (not mutated)
-  assert.deepEqual(existing.ops, [{ insert: "first line\n" }]);
-  // empty existing -> no leading separator
-  assert.deepEqual(appendTextToDelta(null, "x").ops, [{ insert: "x\n" }]);
 });
