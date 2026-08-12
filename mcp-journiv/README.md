@@ -139,9 +139,17 @@ The Journiv-specific steps below layer on top of it.
 
 These steps run on your server — this repo ships the code, image, and templates.
 
-1. **Create a dedicated Journiv account for the MCP** (not your personal login),
-   then re-disable signups in Journiv. Revoking the connector should never require
-   changing your own password.
+1. **Use the Journiv account that owns your journals** — i.e. your own login —
+   as `JOURNIV_USER` / `JOURNIV_PASS`. Journiv is strictly single-user: journals,
+   entries, and tags are scoped to one account, with no sharing and no
+   app-specific tokens. A *separate* "MCP-only" account can only see its own
+   (empty) data, so it would never find your journals. The **`ai`-tag allowlist**
+   — not the choice of account — is what keeps private entries invisible to
+   Claude (the credentials can read everything; the tools only ever return
+   `ai`-tagged entries). To "revoke" access, stop the container or remove the
+   connector in Claude (also gated by `OAUTH_CLIENT_SECRET`); changing your
+   Journiv password is the only way to rotate the credential itself. Credentials
+   live only in the container env / `/config`, never committed.
 2. **Configure** — copy `.env.example` to `.env` and fill it in (or set the
    equivalent fields in the Unraid template). `JOURNIV_URL` is Journiv's
    **internal** address, `OAUTH_CLIENT_SECRET` is a long random string
