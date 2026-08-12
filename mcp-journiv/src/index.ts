@@ -6,13 +6,12 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { rawRequest as rawRequestBase, type RawResponse } from "./httpclient.js";
+import { markdownToDelta, appendMarkdownToDelta } from "./markdown.js";
 import {
   asList,
   isVisible as isVisibleTag,
   tagNames,
-  textToDelta,
   deltaToText,
-  appendTextToDelta,
 } from "./visibility.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -304,6 +303,56 @@ async function visibleMomentIds(): Promise<{ tagId: string | null; ids: Set<stri
   return { tagId, ids };
 }
 
+// Collect fully-hydrated visible moments (newest first) by paging the main
+// /moments list and intersecting with the visible-id set. We use /moments — not
+// /tags/{id}/moments — because the main list returns full MomentResponse objects
+// with a populated `tags` array; the tag endpoint returns a lighter summary that
+// omits tags (which would make every listed entry show tags: []). Paging + the
+// id-set intersection also avoids the "filter one page client-side → silently
+// under-return" trap. Optional `search` narrows server-side.
+async function collectVisibleMoments(
+  limit: number,
+  search?: string
+): Promise<{ tagId: string | null; visibleCount: number; results: any[]; truncated: boolean }> {
+  const { tagId, ids } = await visibleMomentIds();
+  if (!tagId || ids.size === 0) {
+    return { tagId, visibleCount: ids.size, results: [], truncated: false };
+  }
+
+  const results: any[] = [];
+  const MAX_SCAN = 2000; // bound the crawl on very large journals
+  let scanned = 0;
+  let cursor: { at?: string; id?: string } | null = null;
+
+  while (results.length < limit && scanned < MAX_SCAN) {
+    const qp = new URLSearchParams({ limit: "100", include_drafts: "false" });
+    if (search) qp.set("search", search);
+    if (cursor?.at && cursor?.id) {
+      qp.set("cursor_logged_at_utc", cursor.at);
+      qp.set("cursor_id", cursor.id);
+    }
+    const data = await jget(`/moments?${qp.toString()}`);
+    const list = asList(data);
+    if (list.length === 0) break;
+    for (const m of list) {
+      scanned++;
+      if (ids.has(m.id)) results.push(m);
+      if (results.length >= limit) break;
+    }
+    if (list.length < 100) break;
+    const last = list[list.length - 1];
+    if (!last?.logged_at_utc || !last?.id) break;
+    cursor = { at: last.logged_at_utc, id: last.id };
+  }
+
+  return {
+    tagId,
+    visibleCount: ids.size,
+    results,
+    truncated: scanned >= MAX_SCAN && results.length < limit,
+  };
+}
+
 // ── Shaping ─────────────────────────────────────────────────────────────────────
 
 // Compact form for lists/search. Uses the entry preview Journiv already returns
@@ -406,13 +455,12 @@ function createMcpServer(): McpServer {
     async ({ limit = 10 }) => {
       if (!journivConfigured()) return notConfigured();
       try {
-        const tagId = await requiredTagId();
+        const { tagId, results } = await collectVisibleMoments(limit);
         if (!tagId) {
           return ok({ total: 0, entries: [], note: `No entries tagged "${REQUIRED_TAG}" yet.` });
         }
-        const data = await jget(`/tags/${tagId}/moments?limit=${limit}&offset=0`);
-        const list = asList(data).sort(byDateDesc).slice(0, limit);
-        return ok({ total: list.length, entries: list.map(summarize) });
+        const entries = results.sort(byDateDesc).slice(0, limit).map(summarize);
+        return ok({ total: entries.length, entries });
       } catch (e: any) {
         return errorResponse(e.message);
       }
@@ -476,47 +524,13 @@ function createMcpServer(): McpServer {
     async ({ query, limit = 10 }) => {
       if (!journivConfigured()) return notConfigured();
       try {
-        // Server-side tag filtering isn't available on /moments, so we intersect
-        // search hits with the authoritative set of visible ids. We page through
-        // hits (cursor-based) rather than filtering a single page, so a large
-        // private journal can't make a real match look like "no results".
-        const { tagId, ids } = await visibleMomentIds();
-        if (!tagId || ids.size === 0) return ok({ total: 0, results: [] });
-
-        const results: Record<string, unknown>[] = [];
-        const MAX_SCAN = 2000; // bound the crawl on very large journals
-        let scanned = 0;
-        let cursor: { at?: string; id?: string } | null = null;
-
-        while (results.length < limit && scanned < MAX_SCAN) {
-          const qp = new URLSearchParams({
-            search: query,
-            limit: "100",
-            include_drafts: "false",
-          });
-          if (cursor?.at && cursor?.id) {
-            qp.set("cursor_logged_at_utc", cursor.at);
-            qp.set("cursor_id", cursor.id);
-          }
-          const data = await jget(`/moments?${qp.toString()}`);
-          const list = asList(data);
-          if (list.length === 0) break;
-          for (const m of list) {
-            scanned++;
-            if (ids.has(m.id)) results.push(summarize(m));
-            if (results.length >= limit) break;
-          }
-          if (list.length < 100) break;
-          const last = list[list.length - 1];
-          if (!last?.logged_at_utc || !last?.id) break;
-          cursor = { at: last.logged_at_utc, id: last.id };
-        }
-
-        return ok({
-          total: results.length,
-          truncated: scanned >= MAX_SCAN && results.length < limit,
-          results,
-        });
+        // Server-side tag filtering isn't available on /moments, so we page the
+        // search hits and intersect with the authoritative visible-id set (rather
+        // than filtering a single page, which could make a real match look like
+        // "no results" on a large private journal).
+        const { tagId, results, truncated } = await collectVisibleMoments(limit, query);
+        if (!tagId) return ok({ total: 0, results: [] });
+        return ok({ total: results.length, truncated, results: results.map(summarize) });
       } catch (e: any) {
         return errorResponse(e.message);
       }
@@ -551,7 +565,12 @@ function createMcpServer(): McpServer {
     "create_entry",
     `Create a new journal entry. The "${REQUIRED_TAG}" tag is applied automatically so the entry is visible to you afterward and clearly marked as AI-authored in the Journiv UI. Writes to the default journal unless journal_id is given (use list_journals to find ids).`,
     {
-      content: z.string().min(1).describe("The body text of the entry."),
+      content: z
+        .string()
+        .min(1)
+        .describe(
+          "The body text of the entry. Markdown is supported and rendered as real formatting (headings, bold, italic, lists, blockquotes, inline/fenced code, links)."
+        ),
       title: z.string().optional().describe("Optional title for the entry."),
       note: z.string().max(500).optional().describe("Optional short note (max 500 chars)."),
       date: z
@@ -576,7 +595,7 @@ function createMcpServer(): McpServer {
           entry: {
             journal_id: journalId,
             ...(title ? { title } : {}),
-            content_delta: textToDelta(content),
+            content_delta: markdownToDelta(content),
           },
         };
         if (note) body.note = note;
@@ -618,7 +637,10 @@ function createMcpServer(): McpServer {
     `Append text to the end of an existing visible entry, preserving what's already there. Returns "not found" if the entry isn't tagged "${REQUIRED_TAG}".`,
     {
       entry_id: z.string().describe("The entry (moment) id to append to."),
-      text: z.string().min(1).describe("Text to append."),
+      text: z
+        .string()
+        .min(1)
+        .describe("Text to append. Markdown is supported and rendered as real formatting."),
     },
     async ({ entry_id, text }) => {
       if (!journivConfigured()) return notConfigured();
@@ -630,7 +652,7 @@ function createMcpServer(): McpServer {
           return errorResponse("This entry has no text body to append to. Use create_entry instead.");
         }
         const full = await jget(`/entries/${entryId}`);
-        const newDelta = appendTextToDelta(full?.content_delta, text);
+        const newDelta = appendMarkdownToDelta(full?.content_delta, text);
         // PUT /entries touches body/title only — it structurally cannot alter tags.
         await jfetch(`/entries/${entryId}`, {
           method: "PUT",
@@ -649,7 +671,12 @@ function createMcpServer(): McpServer {
     `Replace the body text (and optionally title) of an existing visible entry. Cannot change tags. Returns "not found" if the entry isn't tagged "${REQUIRED_TAG}".`,
     {
       entry_id: z.string().describe("The entry (moment) id to update."),
-      content: z.string().min(1).describe("The new body text. Replaces the existing body."),
+      content: z
+        .string()
+        .min(1)
+        .describe(
+          "The new body text. Replaces the existing body. Markdown is supported and rendered as real formatting."
+        ),
       title: z.string().optional().describe("Optional new title."),
     },
     async ({ entry_id, content, title }) => {
@@ -663,7 +690,7 @@ function createMcpServer(): McpServer {
         }
         // Body-only update. We never send a tags field, and PUT /entries has no
         // tags field to send even if we did — tag changes happen in the UI only.
-        const body: Record<string, unknown> = { content_delta: textToDelta(content) };
+        const body: Record<string, unknown> = { content_delta: markdownToDelta(content) };
         if (title !== undefined) body.title = title;
         await jfetch(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(body) });
         const updated = await jgetOrNull(`/moments/${entry_id}`);

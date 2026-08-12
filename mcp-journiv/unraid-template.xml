@@ -28,9 +28,9 @@
 
   <Config Name="Journiv URL" Target="JOURNIV_URL" Default="http://journiv:8000" Mode="" Description="INTERNAL address of Journiv's API — NOT its public Cloudflare-Access hostname. Use the Journiv container name on a shared Docker network (http://journiv:8000) or the Unraid host IP (http://192.168.x.x:8000). The MCP must be able to reach this from its network." Type="Variable" Display="always" Required="true" Mask="false">http://journiv:8000</Config>
 
-  <Config Name="Journiv MCP User" Target="JOURNIV_USER" Default="" Mode="" Description="Email of a DEDICATED Journiv account for the MCP (not your personal login). Create it, then re-disable signups in Journiv." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Journiv User (your login)" Target="JOURNIV_USER" Default="" Mode="" Description="Email of the Journiv account that OWNS your journals — your own login. Journiv is single-user with no sharing, so a separate 'MCP-only' account would only see its own empty data. Privacy comes from the ai-tag allowlist (only ai-tagged entries are ever returned), not from the account choice." Type="Variable" Display="always" Required="true" Mask="false"></Config>
 
-  <Config Name="Journiv MCP Password" Target="JOURNIV_PASS" Default="" Mode="" Description="Password for the dedicated Journiv MCP account. Only needed on first run; saved to AppData afterward." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Journiv Password" Target="JOURNIV_PASS" Default="" Mode="" Description="Password for your Journiv account. Only needed on first run; saved to AppData afterward. Stored only in the container config, never committed." Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
   <Config Name="Required Tag (allowlist)" Target="JOURNIV_REQUIRED_TAG" Default="ai" Mode="" Description="Only entries carrying this tag are visible to Claude, and every entry the MCP creates gets it automatically. Leave as 'ai' unless you want a different opt-in tag." Type="Variable" Display="always" Required="false" Mask="false">ai</Config>
 
