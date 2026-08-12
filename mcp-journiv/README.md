@@ -29,13 +29,28 @@ Claude  →  journalmcp.<your-domain>  →  [cloudflared tunnel]
 | `list_recent` | Most recent N visible (`ai`-tagged) entries |
 | `get_entry` | One entry in full, by id **or** by date |
 | `search_entries` | Full-text search, restricted to visible entries |
-| `create_entry` | Create an entry — **automatically tagged `ai`** |
+| `list_journals` | List journals (id + title) so a specific one can be targeted |
+| `create_entry` | Create an entry — **automatically tagged `ai`**; optional `journal_id` |
 | `append_to_entry` | Append text to an existing visible entry |
 | `update_entry` | Replace the body text (and optionally title) of a visible entry |
 
 There is **no delete tool** by design — manual deletion in the Journiv UI is
 always better. There are also no mood/analytics tools in v1 (see
 [Analytics leakage](#analytics-leakage-why-no-mood-tools)).
+
+### Choosing a journal
+
+Journiv requires a journal for every new entry and has no "default journal," so:
+
+- `create_entry` writes to the **configured default** — `JOURNIV_JOURNAL_ID` if
+  set, otherwise your first journal (auto-resolved and cached).
+- To target a specific journal, call **`list_journals`** to get the ids, then pass
+  **`journal_id`** to `create_entry`. A per-call `journal_id` overrides the default.
+
+This supports "always use journal X unless I say otherwise": set that journal as
+the default (or tell Claude its id in your connector instructions), and override
+per entry when needed. `list_journals` returns only journal metadata (id, title,
+counts) — never entry contents, which remain governed by the `ai` allowlist.
 
 ## The visibility model (read this)
 

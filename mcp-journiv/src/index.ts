@@ -28,6 +28,7 @@ interface SavedConfig {
   journivPass?: string;
   requiredTag?: string;
   hostHeader?: string;
+  journalId?: string;
   oauthClientId?: string;
   oauthClientSecret?: string;
 }
@@ -39,6 +40,7 @@ function loadConfig(): SavedConfig {
     journivPass: process.env.JOURNIV_PASS || undefined,
     requiredTag: process.env.JOURNIV_REQUIRED_TAG || undefined,
     hostHeader: process.env.JOURNIV_HOST_HEADER || undefined,
+    journalId: process.env.JOURNIV_JOURNAL_ID || undefined,
     oauthClientId: process.env.OAUTH_CLIENT_ID || undefined,
     oauthClientSecret: process.env.OAUTH_CLIENT_SECRET || undefined,
   };
@@ -88,6 +90,11 @@ const JOURNIV_HOST_HEADER = (config.hostHeader ?? "")
   .replace(/^https?:\/\//, "")
   .replace(/\/.*$/, "")
   .trim();
+// Journiv requires a journal_id on every new entry. If set, this pins new entries
+// to a specific journal; otherwise the server auto-resolves the user's first
+// journal on first write and caches it. Only needed to disambiguate multiple
+// journals.
+const JOURNIV_JOURNAL_ID = (config.journalId ?? "").trim();
 const OAUTH_CLIENT_ID = config.oauthClientId;
 const OAUTH_CLIENT_SECRET = config.oauthClientSecret;
 const PORT = parseInt(process.env.PORT || "3000");
@@ -251,6 +258,29 @@ async function requiredTagId(): Promise<string | null> {
   return cachedTagId;
 }
 
+// Journiv requires a journal_id on every new entry, and has no "default journal"
+// concept. Use the configured JOURNIV_JOURNAL_ID if set, otherwise resolve the
+// user's first journal (lowest position) once and cache it for the process.
+let cachedJournalId: string | null = null;
+
+async function resolveJournalId(): Promise<string> {
+  if (JOURNIV_JOURNAL_ID) return JOURNIV_JOURNAL_ID;
+  if (cachedJournalId) return cachedJournalId;
+  const data = await jget(`/journals/?include_archived=false`);
+  const journals = asList(data);
+  if (journals.length === 0) {
+    throw new Error(
+      "No journal found to write to. Create a journal in Journiv, or set JOURNIV_JOURNAL_ID."
+    );
+  }
+  // Prefer the lowest-position journal so this matches what the user sees first.
+  journals.sort((a: any, b: any) => (a?.position ?? 0) - (b?.position ?? 0));
+  const id = journals[0]?.id;
+  if (!id) throw new Error("Journiv returned a journal with no id.");
+  cachedJournalId = id;
+  return id;
+}
+
 // The set of moment ids that carry REQUIRED_TAG, straight from the server-side
 // tag endpoint. This is the source of truth for filtering list/search results
 // and sidesteps the "paginate → filter client-side → silently under-return"
@@ -304,6 +334,20 @@ function byDateDesc(a: any, b: any): number {
   const av = a?.logged_at_utc ?? a?.logged_date_tz ?? "";
   const bv = b?.logged_at_utc ?? b?.logged_date_tz ?? "";
   return av < bv ? 1 : av > bv ? -1 : 0;
+}
+
+// Journal container metadata (not entry content — safe to list regardless of the
+// visibility allowlist, which governs entry text, not the existence of journals).
+function summarizeJournal(j: any): Record<string, unknown> {
+  return {
+    id: j?.id,
+    title: j?.title ?? null,
+    description: j?.description ?? null,
+    entry_count: j?.entry_count ?? undefined,
+    is_favorite: j?.is_favorite ?? undefined,
+    is_archived: j?.is_archived ?? undefined,
+    position: j?.position ?? undefined,
+  };
 }
 
 // ── Response Helpers ────────────────────────────────────────────────────────────
@@ -480,8 +524,32 @@ function createMcpServer(): McpServer {
   );
 
   server.tool(
+    "list_journals",
+    "List the journals in your Journiv account with their ids and titles, so a specific journal can be targeted when creating entries (pass journal_id to create_entry). This lists journal containers only — it does not expose the contents of any entry.",
+    {},
+    async () => {
+      if (!journivConfigured()) return notConfigured();
+      try {
+        const data = await jget(`/journals/?include_archived=true`);
+        const journals = asList(data).sort(
+          (a: any, b: any) => (a?.position ?? 0) - (b?.position ?? 0)
+        );
+        // What create_entry uses when no journal_id is passed.
+        const defaultJournalId = JOURNIV_JOURNAL_ID || journals[0]?.id || null;
+        return ok({
+          total: journals.length,
+          default_journal_id: defaultJournalId,
+          journals: journals.map(summarizeJournal),
+        });
+      } catch (e: any) {
+        return errorResponse(e.message);
+      }
+    }
+  );
+
+  server.tool(
     "create_entry",
-    `Create a new journal entry. The "${REQUIRED_TAG}" tag is applied automatically so the entry is visible to you afterward and clearly marked as AI-authored in the Journiv UI.`,
+    `Create a new journal entry. The "${REQUIRED_TAG}" tag is applied automatically so the entry is visible to you afterward and clearly marked as AI-authored in the Journiv UI. Writes to the default journal unless journal_id is given (use list_journals to find ids).`,
     {
       content: z.string().min(1).describe("The body text of the entry."),
       title: z.string().optional().describe("Optional title for the entry."),
@@ -491,12 +559,22 @@ function createMcpServer(): McpServer {
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional()
         .describe("Optional date (YYYY-MM-DD) to log the entry under. Defaults to now."),
+      journal_id: z
+        .string()
+        .optional()
+        .describe(
+          "Target a specific journal by id (from list_journals). Omit to use the configured default or your first journal."
+        ),
     },
-    async ({ content, title, note, date }) => {
+    async ({ content, title, note, date, journal_id }) => {
       if (!journivConfigured()) return notConfigured();
       try {
+        // Journiv requires journal_id on the nested entry object. An explicit
+        // per-call id wins over the configured/auto-resolved default.
+        const journalId = journal_id ?? (await resolveJournalId());
         const body: Record<string, unknown> = {
           entry: {
+            journal_id: journalId,
             ...(title ? { title } : {}),
             content_delta: textToDelta(content),
           },
@@ -621,6 +699,7 @@ app.get("/health", (_req, res) => {
     configured: { journiv: journivConfigured() },
     requiredTag: REQUIRED_TAG,
     hostHeaderOverride: JOURNIV_HOST_HEADER || null,
+    journalId: JOURNIV_JOURNAL_ID || "(auto: first journal)",
     oauth: !!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET),
   });
 });
@@ -742,6 +821,7 @@ app.listen(PORT, () => {
   console.log(`Journiv MCP Server running on port ${PORT}`);
   console.log(`Journiv:     ${journivConfigured() ? `✓ ${JOURNIV_URL}` : "✗ not configured"}`);
   console.log(`Host header: ${JOURNIV_HOST_HEADER ? `override -> ${JOURNIV_HOST_HEADER}` : "(default from URL)"}`);
+  console.log(`Journal:     ${JOURNIV_JOURNAL_ID ? JOURNIV_JOURNAL_ID : "(auto: first journal)"}`);
   console.log(`Visible tag: "${REQUIRED_TAG}" (allowlist)`);
   console.log(`OAuth:       ${!!(OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET) ? "enabled" : "disabled"}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);

@@ -18,6 +18,9 @@ services:
       - JOURNIV_PASS=${JOURNIV_MCP_PASS}
       # Only entries carrying this tag are ever visible to Claude. Opt-in.
       - JOURNIV_REQUIRED_TAG=${JOURNIV_REQUIRED_TAG:-ai}
+      # Optional: pin new entries to a specific journal. Blank = auto-resolve the
+      # first journal. Only needed if you keep multiple journals.
+      - JOURNIV_JOURNAL_ID=${JOURNIV_JOURNAL_ID:-}
       # Optional: present this Host to Journiv (its public hostname / DOMAIN_NAME)
       # so its TrustedHostMiddleware accepts requests made to an internal IP.
       # Leave unset if JOURNIV_URL's host is already trusted.
