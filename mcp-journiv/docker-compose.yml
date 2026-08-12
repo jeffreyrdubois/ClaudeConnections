@@ -1,0 +1,41 @@
+services:
+
+  # ── Journiv MCP Server ───────────────────────────────────────────────────────
+  # Talks to Journiv over the internal Docker network (http://journiv:8000) — it
+  # never reaches Journiv via its public hostname. The public MCP hostname is
+  # fronted by the shared cloudflared container (see cloudflared/) and gets NO
+  # Cloudflare Access policy: this server's own OAuth token is the boundary.
+  mcp-journiv:
+    build: .
+    container_name: mcp-journiv
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    environment:
+      # Journiv (internal Docker network hostname — NOT the public URL)
+      - JOURNIV_URL=${JOURNIV_URL:-http://journiv:8000}
+      - JOURNIV_USER=${JOURNIV_MCP_USER}
+      - JOURNIV_PASS=${JOURNIV_MCP_PASS}
+      # Only entries carrying this tag are ever visible to Claude. Opt-in.
+      - JOURNIV_REQUIRED_TAG=${JOURNIV_REQUIRED_TAG:-ai}
+      # MCP auth (used when registering the remote connector in Claude)
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - PORT=3000
+    volumes:
+      - ./config:/config
+    networks:
+      # Join Journiv's Docker network so `http://journiv:8000` resolves.
+      # This must match the actual network name Journiv's compose creates
+      # (often `<project>_default`, e.g. `journiv_default`).
+      - journiv_default
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  journiv_default:
+    external: true
